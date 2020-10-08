@@ -66,7 +66,6 @@ impl RangeProof {
     pub fn prove(witness: &Witness, statement: &Statement) -> Result<Self, ProofError> {
         let third_range = statement.range.div_floor(&BigInt::from(3));
         let two_third_range = &third_range * BigInt::from(2);
-        let q_minus_1 = &statement.pk.pp.q - BigInt::one();
 
         let mut w1_vec: Vec<_> = (0..statement.sec_param)
             .into_par_iter()
@@ -82,6 +81,7 @@ impl RangeProof {
                 mem::swap(&mut w2_vec[i], &mut w1_vec[i]);
             }
         }
+
         let r1_vec: Vec<_> = (0..statement.sec_param)
             .into_par_iter()
             .map(|_| BigInt::sample(&statement.pk.pp.q.bit_length() + statement.kapa))
@@ -98,7 +98,7 @@ impl RangeProof {
                 ExponentElGamal::encrypt_from_predefined_randomness(
                     &wi,
                     &statement.pk,
-                    &ri.modulus(&q_minus_1),
+                    &ri.modulus(&statement.pk.pp.q),
                 )
                 .unwrap()
             })
@@ -111,7 +111,7 @@ impl RangeProof {
                 ExponentElGamal::encrypt_from_predefined_randomness(
                     &wi,
                     &statement.pk,
-                    &ri.modulus(&q_minus_1),
+                    &ri.modulus(&statement.pk.pp.q),
                 )
                 .unwrap()
             })
@@ -146,19 +146,19 @@ impl RangeProof {
                         w2: w2_vec[i].clone(),
                         r2: r2_vec[i].clone(),
                     }
-                } else if &witness.x + &w1_vec[i] > third_range
+                } else if (&witness.x + &w1_vec[i]).ge(&third_range)
                     && &witness.x + &w1_vec[i] < two_third_range
                 {
                     Response::Mask {
                         j: 1,
                         masked_x: &witness.x + &w1_vec[i],
-                        masked_r: BigInt::mod_add(&witness.r, &r1_vec[i], &q_minus_1),
+                        masked_r: BigInt::mod_add(&witness.r, &r1_vec[i], &statement.pk.pp.q),
                     }
                 } else {
                     Response::Mask {
                         j: 2,
                         masked_x: &witness.x + &w2_vec[i],
-                        masked_r: BigInt::mod_add(&witness.r, &r2_vec[i], &q_minus_1),
+                        masked_r: BigInt::mod_add(&witness.r, &r2_vec[i], &statement.pk.pp.q),
                     }
                 }
             })
@@ -173,7 +173,6 @@ impl RangeProof {
     pub fn verify(&self, statement: &Statement) -> Result<(), ProofError> {
         let third_range = statement.range.div_floor(&BigInt::from(3));
         let two_third_range = &third_range * BigInt::from(2);
-        let q_minus_1 = &statement.pk.pp.q - BigInt::one();
 
         let mut fs_input = vec![
             &statement.pk.h,
@@ -192,7 +191,6 @@ impl RangeProof {
             .into_par_iter()
             .map(|i| {
                 let ei = bits_of_e[i];
-                println!("ei: {:?}", ei.clone());
                 let response = &self.z_vec[i];
                 match (ei, response) {
                     (false, Response::Open { w1, r1, w2, r2 }) => {
@@ -201,24 +199,20 @@ impl RangeProof {
                         let expected_c1i = ExponentElGamal::encrypt_from_predefined_randomness(
                             &w1,
                             &statement.pk,
-                            &r1.modulus(&q_minus_1),
+                            &r1.modulus(&statement.pk.pp.q),
                         )
                         .unwrap();
                         let expected_c2i = ExponentElGamal::encrypt_from_predefined_randomness(
                             &w2,
                             &statement.pk,
-                            &r2.modulus(&q_minus_1),
+                            &r2.modulus(&statement.pk.pp.q),
                         )
                         .unwrap();
 
                         if expected_c1i != self.encrypted_pairs.c1[i] {
-                            println!("TEST1");
-
                             res = false;
                         }
                         if expected_c2i != self.encrypted_pairs.c2[i] {
-                            println!("TEST2");
-
                             res = false;
                         }
 
@@ -229,7 +223,6 @@ impl RangeProof {
                                     && w2.le(&two_third_range));
 
                         if !flag {
-                            println!("TEST3");
                             res = false;
                         }
 

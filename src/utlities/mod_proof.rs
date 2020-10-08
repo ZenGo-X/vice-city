@@ -43,11 +43,13 @@ pub struct ModStatement {
 
 impl ModProof {
     pub fn prove(witness: &ModWitness, statement: &ModStatement) -> Result<Self, ProofError> {
-        let q_minus_1 = &statement.pk.pp.q - BigInt::one();
         let minus_c_prime = ExponentElGamal::mul(&statement.c_prime, &-BigInt::one());
         let c_minus_c_prime = ExponentElGamal::add(&statement.c, &minus_c_prime).unwrap();
-        let p_inv = statement.modulus_p.invert(&q_minus_1).unwrap();
-        let c_double_prime = ExponentElGamal::mul(&c_minus_c_prime, &p_inv);
+        let p_inv = statement.modulus_p.invert(&statement.pk.pp.q);
+        if p_inv.is_none() {
+            return Err(ProofError::ModProofError);
+        }
+        let c_double_prime = ExponentElGamal::mul(&c_minus_c_prime, &p_inv.clone().unwrap());
 
         // TODO: check security / move to tight range proof.
         let range_1 = BigInt::from(3) * &statement.modulus_p; // we compensate for the "slack" in the current range proof.
@@ -59,10 +61,12 @@ impl ModProof {
             };
         range_2 = range_2 * BigInt::from(3);
 
-        let r_a_mul_minus_r_b = BigInt::mod_sub(&witness.r_a, &witness.r_b, &q_minus_1);
-        let r_d = BigInt::mod_mul(&r_a_mul_minus_r_b, &p_inv, &q_minus_1);
+        let r_a_mul_minus_r_b = BigInt::mod_sub(&witness.r_a, &witness.r_b, &statement.pk.pp.q);
+        let r_d = BigInt::mod_mul(&r_a_mul_minus_r_b, &p_inv.unwrap(), &statement.pk.pp.q);
 
-        let d = (&witness.a - &witness.b).div_floor(&statement.modulus_p);
+        let d = (BigInt::mod_sub(&witness.a, &witness.b, &statement.pk.pp.q))
+            .div_floor(&statement.modulus_p);
+
         let range_witness1 = RangeWitness {
             x: witness.b.clone(),
             r: witness.r_b.clone(),
@@ -97,7 +101,6 @@ impl ModProof {
     }
 
     pub fn verify(&self, statement: &ModStatement) -> Result<(), ProofError> {
-        let q_minus_1 = &statement.pk.pp.q - BigInt::one();
         let range_1 = BigInt::from(3) * &statement.modulus_p; // we compensate for the "slack" in the current range proof.
         let mut range_2 =
             if statement.upper_bound_m.mod_floor(&statement.modulus_p) == BigInt::zero() {
@@ -109,8 +112,11 @@ impl ModProof {
 
         let minus_c_prime = ExponentElGamal::mul(&statement.c_prime, &-BigInt::one());
         let c_minus_c_prime = ExponentElGamal::add(&statement.c, &minus_c_prime).unwrap();
-        let p_inv = statement.modulus_p.invert(&q_minus_1).unwrap();
-        let c_double_prime = ExponentElGamal::mul(&c_minus_c_prime, &p_inv);
+        let p_inv = statement.modulus_p.invert(&statement.pk.pp.q);
+        if p_inv.is_none() {
+            return Err(ProofError::ModProofError);
+        }
+        let c_double_prime = ExponentElGamal::mul(&c_minus_c_prime, &p_inv.unwrap());
 
         let range_statement1 = RangeStatement {
             pk: statement.pk.clone(),
@@ -152,28 +158,31 @@ mod tests {
 
     #[test]
     pub fn test_mod_proof() {
-        let pp = ElGamalPP::generate_from_rfc7919(SupportedGroups::FFDHE2048);
-        let keypair = ElGamalKeyPair::generate(&pp);
-        let share_bit_size: usize = pp.q.bit_length() / 2 - 2;
-        let a = BigInt::sample(share_bit_size);
-        let r_a = BigInt::sample_below(&pp.q);
-        let modulus_p = BigInt::from(71);
-        let b = a.mod_floor(&modulus_p);
-        let r_b = BigInt::sample_below(&pp.q);
-        let c = ExponentElGamal::encrypt_from_predefined_randomness(&a, &keypair.pk, &r_a).unwrap();
-        let c_prime =
-            ExponentElGamal::encrypt_from_predefined_randomness(&b, &keypair.pk, &r_b).unwrap();
-        let witness = ModWitness { r_a, a, r_b, b };
-        let statement = ModStatement {
-            c,
-            c_prime,
-            modulus_p,
-            upper_bound_m: BigInt::from(2).pow(share_bit_size as u32),
-            pk: keypair.pk,
-        };
+        for _ in 1..2 {
+            let pp = ElGamalPP::generate_from_rfc7919(SupportedGroups::FFDHE2048);
+            let keypair = ElGamalKeyPair::generate(&pp);
+            let share_bit_size: usize = pp.q.bit_length() / 2 - 2;
+            let a = BigInt::sample(share_bit_size);
+            let r_a = BigInt::sample_below(&pp.q);
+            let modulus_p = BigInt::from(71);
+            let b = a.mod_floor(&modulus_p);
+            let r_b = BigInt::sample_below(&pp.q);
+            let c =
+                ExponentElGamal::encrypt_from_predefined_randomness(&a, &keypair.pk, &r_a).unwrap();
+            let c_prime =
+                ExponentElGamal::encrypt_from_predefined_randomness(&b, &keypair.pk, &r_b).unwrap();
+            let witness = ModWitness { r_a, a, r_b, b };
+            let statement = ModStatement {
+                c,
+                c_prime,
+                modulus_p,
+                upper_bound_m: BigInt::from(2).pow(share_bit_size as u32),
+                pk: keypair.pk,
+            };
 
-        let proof = ModProof::prove(&witness, &statement).unwrap();
-        let verify = proof.verify(&statement);
-        assert!(verify.is_ok());
+            let proof = ModProof::prove(&witness, &statement).unwrap();
+            let verify = proof.verify(&statement);
+            assert!(verify.is_ok());
+        }
     }
 }

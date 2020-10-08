@@ -5,8 +5,6 @@ use curv::arithmetic::traits::Samplable;
 use curv::arithmetic::traits::ZeroizeBN;
 use curv::BigInt;
 use elgamal::ElGamalPP;
-use elgamal::ElGamalPrivateKey;
-use elgamal::ElGamalPublicKey;
 
 const HASH_OUTPUT_BIT_SIZE: usize = 256;
 /// This is implementation of Schnorr's identification protocol for elliptic curve groups or a
@@ -27,12 +25,12 @@ pub struct DLogProof {
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Witness {
-    pub witness: ElGamalPrivateKey,
+    pub x: BigInt,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Statement {
-    pub pk: ElGamalPublicKey,
+    pub h: BigInt,
 }
 
 pub trait ProveDLog {
@@ -44,10 +42,10 @@ pub trait ProveDLog {
 impl ProveDLog for DLogProof {
     fn prove(w: &Witness, pp: &ElGamalPP) -> DLogProof {
         let mut r: BigInt = BigInt::sample_below(&pp.q);
-        let random_point = BigInt::mod_pow(&pp.g, &r, &pp.q);
-        let pk = BigInt::mod_pow(&pp.g, &w.witness.x, &pp.q);
+        let random_point = BigInt::mod_pow(&pp.g, &r, &pp.p);
+        let pk = BigInt::mod_pow(&pp.g, &w.x, &pp.p);
         let e = hash(&[&random_point, &pk, &pp.g], &pp, HASH_OUTPUT_BIT_SIZE);
-        let response = &r + &(e * &w.witness.x);
+        let response = &r + &(e * &w.x);
         r.zeroize_bn();
         DLogProof {
             random_point,
@@ -57,16 +55,15 @@ impl ProveDLog for DLogProof {
 
     fn verify(&self, statement: &Statement, pp: &ElGamalPP) -> Result<(), ProofError> {
         let e = hash(
-            &[&self.random_point, &statement.pk.h, &pp.g],
+            &[&self.random_point, &statement.h, &pp.g],
             &pp,
             HASH_OUTPUT_BIT_SIZE,
         );
 
-        let q_minus_one = &pp.q - BigInt::one();
-        let z = self.response.modulus(&q_minus_one);
-        let pk_e = BigInt::mod_pow(&statement.pk.h, &e, &pp.q);
-        let pk_e_random_point = BigInt::mod_mul(&self.random_point, &pk_e, &pp.q);
-        let g_z = BigInt::mod_pow(&pp.g, &z, &pp.q);
+        let z = self.response.modulus(&pp.q);
+        let pk_e = BigInt::mod_pow(&statement.h, &e, &pp.p);
+        let pk_e_random_point = BigInt::mod_mul(&self.random_point, &pk_e, &pp.p);
+        let g_z = BigInt::mod_pow(&pp.g, &z, &pp.p);
 
         if g_z == pk_e_random_point {
             Ok(())
@@ -90,10 +87,8 @@ mod tests {
     fn test_dlog_proof() {
         let pp = ElGamalPP::generate_from_rfc7919(SupportedGroups::FFDHE2048);
         let keypair = ElGamalKeyPair::generate(&pp);
-        let witness = Witness {
-            witness: keypair.sk,
-        };
-        let statement = Statement { pk: keypair.pk };
+        let witness = Witness { x: keypair.sk.x };
+        let statement = Statement { h: keypair.pk.h };
 
         let dlog_proof = DLogProof::prove(&witness, &pp);
         let verified = dlog_proof.verify(&statement, &pp);

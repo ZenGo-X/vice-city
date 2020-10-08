@@ -3,7 +3,7 @@ use curv::cryptographic_primitives::hashing::traits::Hash;
 use curv::BigInt;
 use elgamal::ElGamalPP;
 
-pub mod dh_proof;
+pub mod ddh_proof;
 pub mod dlog_proof;
 pub mod elgamal_enc_proof;
 pub mod equal_secret_proof;
@@ -22,7 +22,7 @@ fn hash(input: &[&BigInt], pp: &ElGamalPP, hash_output_bitlen: usize) -> BigInt 
 // BoringSSL's table.
 // https://boringssl.googlesource.com/boringssl/+/master/crypto/bn/prime.c
 #[rustfmt::skip]
-static SMALL_PRIMES: [u32; 2048] = [
+pub static SMALL_PRIMES: [u32; 2048] = [
     2,     3,     5,     7,     11,    13,    17,    19,    23,    29,    31,
     37,    41,    43,    47,    53,    59,    61,    67,    71,    73,    79,
     83,    89,    97,    101,   103,   107,   109,   113,   127,   131,   137,

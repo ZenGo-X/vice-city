@@ -43,10 +43,10 @@ impl HomoELGamalProof {
     pub fn prove(w: &HomoElGamalWitness, delta: &HomoElGamalStatement) -> HomoELGamalProof {
         let mut s1 = BigInt::sample_below(&delta.pk.pp.q);
         let mut s2 = BigInt::sample_below(&delta.pk.pp.q);
-        let mut a1 = BigInt::mod_pow(&delta.pk.pp.g, &s1, &delta.pk.pp.q);
-        let mut a2 = BigInt::mod_pow(&delta.pk.h, &s2, &delta.pk.pp.q);
-        let a3 = BigInt::mod_pow(&delta.pk.pp.g, &s2, &delta.pk.pp.q);
-        let t = BigInt::mod_mul(&a1, &a2, &delta.pk.pp.q);
+        let mut a1 = BigInt::mod_pow(&delta.pk.pp.g, &s1, &delta.pk.pp.p);
+        let mut a2 = BigInt::mod_pow(&delta.pk.h, &s2, &delta.pk.pp.p);
+        let a3 = BigInt::mod_pow(&delta.pk.pp.g, &s2, &delta.pk.pp.p);
+        let t = BigInt::mod_mul(&a1, &a2, &delta.pk.pp.p);
         let e = hash(
             &[
                 &t,
@@ -57,7 +57,7 @@ impl HomoELGamalProof {
                 &delta.ciphertext.c2,
             ],
             &delta.pk.pp,
-            256,
+            256, // TODO
         );
 
         let z1 = &s1 + &w.m * &e;
@@ -83,16 +83,16 @@ impl HomoELGamalProof {
             256,
         );
 
-        let g_z1 = BigInt::mod_pow(&delta.pk.pp.g, &self.z1, &delta.pk.pp.q);
-        let h_z2 = BigInt::mod_pow(&delta.pk.h, &self.z2, &delta.pk.pp.q);
+        let g_z1 = BigInt::mod_pow(&delta.pk.pp.g, &self.z1, &delta.pk.pp.p);
+        let h_z2 = BigInt::mod_pow(&delta.pk.h, &self.z2, &delta.pk.pp.p);
 
-        let g_z1_mul_h_z2 = BigInt::mod_mul(&g_z1, &h_z2, &delta.pk.pp.q);
-        let c1_e = BigInt::mod_pow(&delta.ciphertext.c1, &e, &delta.pk.pp.q);
-        let c2_e = BigInt::mod_pow(&delta.ciphertext.c2, &e, &delta.pk.pp.q);
+        let g_z1_mul_h_z2 = BigInt::mod_mul(&g_z1, &h_z2, &delta.pk.pp.p);
+        let c1_e = BigInt::mod_pow(&delta.ciphertext.c1, &e, &delta.pk.pp.p);
+        let c2_e = BigInt::mod_pow(&delta.ciphertext.c2, &e, &delta.pk.pp.p);
 
-        let t_c2_e = BigInt::mod_mul(&self.t, &c2_e, &delta.pk.pp.q);
-        let g_z2 = BigInt::mod_pow(&delta.pk.pp.g, &self.z2, &delta.pk.pp.q);
-        let a3_c1_e = BigInt::mod_mul(&self.a3, &c1_e, &delta.pk.pp.q);
+        let t_c2_e = BigInt::mod_mul(&self.t, &c2_e, &delta.pk.pp.p);
+        let g_z2 = BigInt::mod_pow(&delta.pk.pp.g, &self.z2, &delta.pk.pp.p);
+        let a3_c1_e = BigInt::mod_mul(&self.a3, &c1_e, &delta.pk.pp.p);
 
         if g_z1_mul_h_z2 == t_c2_e && g_z2 == a3_c1_e {
             Ok(())

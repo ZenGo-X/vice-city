@@ -14,6 +14,7 @@ pub enum TwoPartyRSAError {
     InvalidDlogProof,
     InvalidCom,
     CandidateGenerationEncError,
+    CandidateGenerationDecError,
     InvalidModProof,
 }
 

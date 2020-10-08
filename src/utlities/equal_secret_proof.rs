@@ -74,14 +74,13 @@ impl EqProof {
             .map(|i| BigInt::mod_pow(&statement.h, &s_i_vec[i], &statement.n))
             .collect::<Vec<BigInt>>();
 
-        let q_minus_1 = &statement.pk.pp.q - BigInt::one();
         let ciphertext_i_vec: Vec<_> = (0..statement.sec_param)
             .into_par_iter()
             .map(|i| {
                 ExponentElGamal::encrypt_from_predefined_randomness(
-                    &BigInt::modulus(&s_i_vec[i], &q_minus_1),
+                    &(s_i_vec[i]).modulus(&statement.pk.pp.q),
                     &statement.pk,
-                    &BigInt::modulus(&r_i_vec[i], &q_minus_1),
+                    &(r_i_vec[i]).modulus(&statement.pk.pp.q),
                 )
                 .unwrap()
             })
@@ -126,16 +125,15 @@ impl EqProof {
         let e = HSha256::create_hash(&fs_input);
         let e_bytes_vec = BigInt::to_vec(&e);
         let bits_of_e = BitVec::from_bytes(&e_bytes_vec[..]);
-        let q_minus_1 = &statement.pk.pp.q - BigInt::one();
 
         let checks: Vec<_> = (0..statement.sec_param)
             .into_par_iter()
             .map(|i| match bits_of_e[i] {
                 false => {
                     ExponentElGamal::encrypt_from_predefined_randomness(
-                        &BigInt::modulus(&self.z_vec[i].z1, &q_minus_1),
+                        &(self.z_vec[i].z1).modulus(&statement.pk.pp.q),
                         &statement.pk,
-                        &BigInt::modulus(&self.z_vec[i].z2, &q_minus_1),
+                        &(self.z_vec[i].z2).modulus(&statement.pk.pp.q),
                     )
                     .unwrap()
                         == self.ciphertext_i_vec[i]
@@ -144,9 +142,9 @@ impl EqProof {
                 }
                 true => {
                     let c_star = ExponentElGamal::encrypt_from_predefined_randomness(
-                        &BigInt::modulus(&self.z_vec[i].z1, &q_minus_1),
+                        &(self.z_vec[i].z1).modulus(&statement.pk.pp.q),
                         &statement.pk,
-                        &BigInt::modulus(&self.z_vec[i].z2, &q_minus_1),
+                        &(self.z_vec[i].z2).modulus(&statement.pk.pp.q),
                     )
                     .unwrap();
 
