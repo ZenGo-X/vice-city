@@ -27,3 +27,10 @@ pub enum ProofError {
     ModProofError,
     DHProofError,
 }
+
+#[derive(Copy, PartialEq, Eq, Clone, Debug)]
+pub enum BulletproofError {
+    SetupError,
+    InnerProductError,
+    RangeProofError,
+}
