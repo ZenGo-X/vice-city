@@ -11,14 +11,26 @@ Copyright information here.
 
 #![allow(non_snake_case)]
 
-use crate::protocols::bulletproofs::Field;
-use crate::protocols::bulletproofs::Group;
+// use crate::protocols::bulletproofs::Field;
+// use crate::protocols::bulletproofs::Group;
 use crate::BulletproofError::{self, InnerProductError};
-
+use elgamal::ElGamalPP;
 use curv::arithmetic::traits::Modulo;
 use curv::cryptographic_primitives::hashing::hash_sha256::HSha256;
 use curv::cryptographic_primitives::hashing::traits::*;
 use curv::BigInt;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Group {
+    pp: ElGamalPP,
+    g: BigInt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Field {
+    pp: ElGamalPP,
+    x: BigInt,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InnerProductArg {
@@ -389,9 +401,7 @@ pub fn multiexponentiation(elements: &[Group], scalars: &[Field]) -> Group {
 
 #[cfg(test)]
 mod tests {
-    use super::super::inner_product::*;
-    use crate::protocols::bulletproofs::Field;
-    use crate::protocols::bulletproofs::Group;
+    use super::*;
     use curv::arithmetic::traits::Samplable;
     use curv::BigInt;
     use elgamal::rfc7919_groups::SupportedGroups;
