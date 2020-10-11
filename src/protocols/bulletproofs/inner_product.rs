@@ -11,14 +11,14 @@ Copyright information here.
 
 #![allow(non_snake_case)]
 
-use crate::protocols::bulletproofs::Group;
 use crate::protocols::bulletproofs::Field;
+use crate::protocols::bulletproofs::Group;
 use crate::BulletproofError::{self, InnerProductError};
 
 use curv::arithmetic::traits::Modulo;
-use curv::BigInt;
 use curv::cryptographic_primitives::hashing::hash_sha256::HSha256;
 use curv::cryptographic_primitives::hashing::traits::*;
+use curv::BigInt;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InnerProductArg {
@@ -85,49 +85,63 @@ impl InnerProductArg {
             R_vec.push(R.clone());
 
             // generate challenge
-            let x = HSha256::create_hash(&[&L.g, &R.g, &ux.g]);
+            let x = HSha256::create_hash(&[&L.g, &R.g, &ux.g]); //TODO: challenge should be of size |q|
+            let x = x.modulus(&order);
             let x_inv = BigInt::mod_inv(&x, &order);
-        
+
             // update secret vectors for next round
             let a_new = (0..n)
                 .map(|i| {
                     let aLx = BigInt::mod_mul(&a_L[i].x, &x, &order);
                     let aR_minusx = BigInt::mod_mul(&a_R[i].x, &x_inv, &order);
                     let a_new_scalar = BigInt::mod_add(&aLx, &aR_minusx, &order);
-                    Field{ pp: params.clone(), x: a_new_scalar }
+                    Field {
+                        pp: params.clone(),
+                        x: a_new_scalar,
+                    }
                 })
                 .collect::<Vec<Field>>();
-            
+
             let b_new = (0..n)
                 .map(|i| {
                     let bRx = BigInt::mod_mul(&b_R[i].x, &x, &order);
                     let bL_minusx = BigInt::mod_mul(&b_L[i].x, &x_inv, &order);
                     let b_new_scalar = BigInt::mod_add(&bRx, &bL_minusx, &order);
-                    Field{ pp: params.clone(), x: b_new_scalar }
+                    Field {
+                        pp: params.clone(),
+                        x: b_new_scalar,
+                    }
                 })
                 .collect::<Vec<Field>>();
-            
-            // update generator vectors 
+
+            let p = a[0].pp.p.clone();
+            // update generator vectors
             let G_new = (0..n)
                 .map(|i| {
-                    let GLx_inv = BigInt::mod_pow(&G_L[i].g, &x_inv, &order);
-                    let GRx = BigInt::mod_pow(&G_R[i].g, &x, &order);
-                    let G_new_element = BigInt::mod_mul(&GRx, &GLx_inv, &order);
+                    let GLx_inv = BigInt::mod_pow(&G_L[i].g, &x_inv, &p);
+                    let GRx = BigInt::mod_pow(&G_R[i].g, &x, &p);
+                    let G_new_element = BigInt::mod_mul(&GRx, &GLx_inv, &p);
                     println!("G[{}] = {}", i, G_new_element);
-                    Group{ pp: params.clone(), g: G_new_element }
+                    Group {
+                        pp: params.clone(),
+                        g: G_new_element,
+                    }
                 })
                 .collect::<Vec<Group>>();
-            
+
             let H_new = (0..n)
                 .map(|i| {
-                    let HLx = BigInt::mod_pow(&H_L[i].g, &x, &order);
-                    let HRx_inv = BigInt::mod_pow(&H_R[i].g, &x_inv, &order);
-                    let H_new_element = BigInt::mod_mul(&HRx_inv, &HLx, &order);
+                    let HLx = BigInt::mod_pow(&H_L[i].g, &x, &p);
+                    let HRx_inv = BigInt::mod_pow(&H_R[i].g, &x_inv, &p);
+                    let H_new_element = BigInt::mod_mul(&HRx_inv, &HLx, &p);
                     println!("H[{}] = {}", i, H_new_element);
-                    Group{ pp: params.clone(), g: H_new_element }
+                    Group {
+                        pp: params.clone(),
+                        g: H_new_element,
+                    }
                 })
                 .collect::<Vec<Group>>();
-            
+
             return InnerProductArg::prove(&G_new, &H_new, &ux, &P, &a_new, &b_new, L_vec, R_vec);
         }
 
@@ -140,17 +154,17 @@ impl InnerProductArg {
     }
 
     pub fn verify(
-        &self, 
+        &self,
         g_vec: &[Group],
-        hi_tag: &[Group], 
-        ux: &Group, 
+        hi_tag: &[Group],
+        ux: &Group,
         P: &Group,
     ) -> Result<(), BulletproofError> {
-        
         let G = &g_vec[..];
         let H = &hi_tag[..];
         let n = G.len();
         let order = ux.pp.q.clone();
+        let p = ux.pp.p.clone();
         let params = ux.pp.clone();
 
         // All of the input vectors must have the same length.
@@ -164,36 +178,47 @@ impl InnerProductArg {
 
             // generate challenge
             let x = HSha256::create_hash(&[&self.L[0].g, &self.R[0].g, &ux.g]);
+            let x = x.modulus(&order);
+
             let x_inv = BigInt::mod_inv(&x, &order);
             let x_sq = BigInt::mod_mul(&x, &x, &order);
             let x_inv_sq = BigInt::mod_mul(&x_inv, &x_inv, &order);
 
-            // update generator vectors 
+            // update generator vectors
             let G_new = (0..n)
                 .map(|i| {
-                    let GLx_inv = BigInt::mod_pow(&G_L[i].g, &x_inv, &order);
-                    let GRx = BigInt::mod_pow(&G_R[i].g, &x, &order);
-                    let G_new_element = BigInt::mod_mul(&GRx, &GLx_inv, &order);
+                    let GLx_inv = BigInt::mod_pow(&G_L[i].g, &x_inv, &p);
+                    let GRx = BigInt::mod_pow(&G_R[i].g, &x, &p);
+                    let G_new_element = BigInt::mod_mul(&GRx, &GLx_inv, &p);
                     println!("G[{}] = {}", i, G_new_element);
-                    Group{ pp: params.clone(), g: G_new_element }
+                    Group {
+                        pp: params.clone(),
+                        g: G_new_element,
+                    }
                 })
                 .collect::<Vec<Group>>();
-            
+
             let H_new = (0..n)
                 .map(|i| {
-                    let HLx = BigInt::mod_pow(&H_L[i].g, &x, &order);
-                    let HRx_inv = BigInt::mod_pow(&H_R[i].g, &x_inv, &order);
-                    let H_new_element = BigInt::mod_mul(&HRx_inv, &HLx, &order);
+                    let HLx = BigInt::mod_pow(&H_L[i].g, &x, &p);
+                    let HRx_inv = BigInt::mod_pow(&H_R[i].g, &x_inv, &p);
+                    let H_new_element = BigInt::mod_mul(&HRx_inv, &HLx, &p);
                     println!("H[{}] = {}", i, H_new_element);
-                    Group{ pp: params.clone(), g: H_new_element }
+                    Group {
+                        pp: params.clone(),
+                        g: H_new_element,
+                    }
                 })
                 .collect::<Vec<Group>>();
-                
+
             // updating P
-            let Lx_sq = BigInt::mod_pow(&self.L[0].g, &x_sq, &order);
-            let Rx_inv_sq = BigInt::mod_pow(&self.R[0].g, &x_inv_sq, &order);
-            let Lx_Rx_inv = BigInt::mod_mul(&Lx_sq, &Rx_inv_sq, &order);
-            let P_new = Group{ pp: params.clone(), g: BigInt::mod_mul(&P.g, &Lx_Rx_inv, &order) };
+            let Lx_sq = BigInt::mod_pow(&self.L[0].g, &x_sq, &p);
+            let Rx_inv_sq = BigInt::mod_pow(&self.R[0].g, &x_inv_sq, &p);
+            let Lx_Rx_inv = BigInt::mod_mul(&Lx_sq, &Rx_inv_sq, &p);
+            let P_new = Group {
+                pp: params.clone(),
+                g: BigInt::mod_mul(&P.g, &Lx_Rx_inv, &p),
+            };
 
             // recursive computation
             let ip = InnerProductArg {
@@ -207,11 +232,11 @@ impl InnerProductArg {
 
         // final verification check
         let c = BigInt::mod_mul(&self.a_tag.x, &self.b_tag.x, &order);
-        let G_times_a = BigInt::mod_pow(&G[0].g, &self.a_tag.x, &order);
-        let H_times_b = BigInt::mod_pow(&H[0].g, &self.b_tag.x, &order);
-        let Ga_Hb = BigInt::mod_mul(&G_times_a, &H_times_b, &order);
-        let ux_c = BigInt::mod_pow(&ux.g, &c, &order);
-        let P_calc = BigInt::mod_mul(&Ga_Hb, &ux_c, &order);
+        let G_times_a = BigInt::mod_pow(&G[0].g, &self.a_tag.x, &p);
+        let H_times_b = BigInt::mod_pow(&H[0].g, &self.b_tag.x, &p);
+        let Ga_Hb = BigInt::mod_mul(&G_times_a, &H_times_b, &p);
+        let ux_c = BigInt::mod_pow(&ux.g, &c, &p);
+        let P_calc = BigInt::mod_mul(&Ga_Hb, &ux_c, &p);
 
         // println!("c = {}\nGa = {}\nHb = {}", c, G_times_a, H_times_b);
         // println!("P_ver = {}", P_calc);
@@ -223,7 +248,6 @@ impl InnerProductArg {
         }
     }
 
-    
     ///
     /// Returns Ok() if the given inner product satisfies the verification equations,
     /// else returns `InnerProductError`.
@@ -231,11 +255,19 @@ impl InnerProductArg {
     /// Uses a single multiexponentiation (multiscalar multiplication in additive notation)
     /// check to verify an inner product proof.
     ///
-    pub fn fast_verify(&self, g_vec: &[Group], hi_tag: &[Group], ux: &Group, P: &Group) -> Result<(), BulletproofError> {
+    pub fn fast_verify(
+        &self,
+        g_vec: &[Group],
+        hi_tag: &[Group],
+        ux: &Group,
+        P: &Group,
+    ) -> Result<(), BulletproofError> {
         let G = &g_vec[..];
         let H = &hi_tag[..];
         let n = G.len();
         let order = ux.pp.q.clone();
+        let p = ux.pp.p.clone();
+
         // let params = ux.pp.clone();
 
         // All of the input vectors must have the same length.
@@ -255,6 +287,8 @@ impl InnerProductArg {
         let mut allinv = BigInt::one();
         for (Li, Ri) in self.L.iter().zip(self.R.iter()) {
             let x = HSha256::create_hash(&[&Li.g, &Ri.g, &ux.g]);
+            let x = x.modulus(&order);
+
             let x_inv = BigInt::mod_inv(&x, &order);
             let x_sq = BigInt::mod_pow(&x, &BigInt::from(2), &order);
             let x_inv_sq = BigInt::mod_pow(&x_inv, &BigInt::from(2), &order);
@@ -306,8 +340,8 @@ impl InnerProductArg {
 
         let tot_len = points.len();
         let expect_P = (0..tot_len)
-            .map(|i|  BigInt::mod_pow(&points[i].g, &scalars[i], &order))
-            .fold(BigInt::one(), |acc, x| BigInt::mod_mul(&acc, &x, &order));
+            .map(|i| BigInt::mod_pow(&points[i].g, &scalars[i], &p))
+            .fold(BigInt::one(), |acc, x| BigInt::mod_mul(&acc, &x, &p));
 
         if P.g == expect_P {
             Ok(())
@@ -324,12 +358,15 @@ pub fn scalar_inner_product(a: &[Field], b: &[Field]) -> Field {
         "inner_product(a,b): lengths of vectors do not match"
     );
     let out = BigInt::zero();
-    let order = a[0].pp.q.clone();
+    let order = a[0].pp.q.clone(); // TODO: check both a and b have the same params
     let out = a.iter().zip(b).fold(out, |acc, var| {
         let aibi = BigInt::mod_mul(&(var.0).x, &(var.1).x, &order);
         BigInt::mod_add(&acc, &aibi, &order)
     });
-    return Field{ pp: a[0].pp.clone(), x: out };
+    return Field {
+        pp: a[0].pp.clone(),
+        x: out,
+    };
 }
 
 pub fn multiexponentiation(elements: &[Group], scalars: &[Field]) -> Group {
@@ -339,67 +376,96 @@ pub fn multiexponentiation(elements: &[Group], scalars: &[Field]) -> Group {
         "multiexponentiation(a,g): lengths of vectors do not match"
     );
     let out = BigInt::one();
-    let order = scalars[0].pp.q.clone();
+    let order = scalars[0].pp.p.clone();
     let out = elements.iter().zip(scalars).fold(out, |acc, var| {
         let temp = BigInt::mod_pow(&(var.0).g, &(var.1).x, &order);
         BigInt::mod_mul(&acc, &temp, &order)
     });
-    return Group{ pp: scalars[0].pp.clone(), g: out };
+    return Group {
+        pp: scalars[0].pp.clone(),
+        g: out,
+    };
 }
 
 #[cfg(test)]
 mod tests {
     use super::super::inner_product::*;
+    use crate::protocols::bulletproofs::Field;
+    use crate::protocols::bulletproofs::Group;
     use curv::arithmetic::traits::Samplable;
+    use curv::BigInt;
     use elgamal::rfc7919_groups::SupportedGroups;
     use elgamal::ElGamalPP;
 
     fn test_helper(n: usize) {
         let params = ElGamalPP::generate_from_rfc7919(SupportedGroups::FFDHE2048);
-        let order = params.q.clone();
 
         let g_vec = (0..n)
             .map(|_| {
-                Group { pp: params.clone(), g: BigInt::sample_below(&params.q)}
+                let r = BigInt::sample_below(&params.q);
+                Group {
+                    pp: params.clone(),
+                    g: BigInt::mod_pow(&params.g, &r, &params.p),
+                }
             })
             .collect::<Vec<Group>>();
-        
+
         let h_vec = (0..n)
             .map(|_| {
-                Group { pp: params.clone(), g: BigInt::sample_below(&params.q)}
+                let r = BigInt::sample_below(&params.q);
+                Group {
+                    pp: params.clone(),
+                    g: BigInt::mod_pow(&params.g, &r, &params.p),
+                }
             })
             .collect::<Vec<Group>>();
 
-        let Gx = Group{ pp: params.clone(), g: BigInt::sample_below(&params.q) };
+        let r = BigInt::sample_below(&params.q);
+        let Gx = Group {
+            pp: params.clone(),
+            g: BigInt::mod_pow(&params.g, &r, &params.p),
+        };
 
         let a: Vec<_> = (0..n)
-            .map(|_| {
-                Field { pp: params.clone(), x: BigInt::sample_below(&params.q)}
+            .map(|_| Field {
+                pp: params.clone(),
+                x: BigInt::sample_below(&params.q),
             })
             .collect();
 
         let b: Vec<_> = (0..n)
-            .map(|_| {
-                Field { pp: params.clone(), x: BigInt::sample_below(&params.q)}
+            .map(|_| Field {
+                pp: params.clone(),
+                x: BigInt::sample_below(&params.q),
             })
             .collect();
 
         let c = super::scalar_inner_product(&a, &b);
 
-        let y = Field { pp: params.clone(), x: BigInt::sample_below(&params.q)};
+        let y = Field {
+            pp: params.clone(),
+            x: BigInt::sample_below(&params.q),
+        };
         let y_vec = (0..n).map(|_| y.clone()).collect::<Vec<Field>>();
-        let hi_tag = (0..n).map(|i| {
-                let hi_yi = BigInt::mod_mul(&h_vec[i].g, &y_vec[i].x, &order);
-                Group{ pp: params.clone(), g: hi_yi}
+        let hi_tag = (0..n)
+            .map(|i| {
+                let hi_yi = BigInt::mod_pow(&h_vec[i].g, &y_vec[i].x, &params.p);
+                Group {
+                    pp: params.clone(),
+                    g: hi_yi,
+                }
             })
             .collect::<Vec<Group>>();
 
         // compute pedersen vector commitment P
-        let ux_c = BigInt::mod_pow(&Gx.g, &c.x, &order);
+        let ux_c = BigInt::mod_pow(&Gx.g, &c.x, &params.p);
         let G_pow_a = multiexponentiation(&g_vec, &a);
         let H_pow_b = multiexponentiation(&hi_tag, &b);
-        let Ga_Hb = BigInt::mod_mul(&G_pow_a.g, &H_pow_b.g, &order);
-        let P = Group { pp: params.clone(), g: BigInt::mod_mul(&Ga_Hb, &ux_c, &order)};
+        let Ga_Hb = BigInt::mod_mul(&G_pow_a.g, &H_pow_b.g, &params.p);
+        let P = Group {
+            pp: params.clone(),
+            g: BigInt::mod_mul(&Ga_Hb, &ux_c, &params.p),
+        };
 
         // println!("c = {}\nGa = {}\nHb = {}", c.x, G_pow_a.g, H_pow_b.g);
         // println!("P_test = {}", P.g);
@@ -416,17 +482,47 @@ mod tests {
         let params = ElGamalPP::generate_from_rfc7919(SupportedGroups::FFDHE2048);
         let mut a: Vec<Field> = Vec::new();
         let mut b: Vec<Field> = Vec::new();
-        a.push(Field{ pp: params.clone(), x: BigInt::from(9)});
-        a.push(Field{ pp: params.clone(), x: BigInt::from(2)});
-        a.push(Field{ pp: params.clone(), x: BigInt::from(5)});
-        a.push(Field{ pp: params.clone(), x: BigInt::from(17)});
-        a.push(Field{ pp: params.clone(), x: BigInt::from(13)});
+        a.push(Field {
+            pp: params.clone(),
+            x: BigInt::from(9),
+        });
+        a.push(Field {
+            pp: params.clone(),
+            x: BigInt::from(2),
+        });
+        a.push(Field {
+            pp: params.clone(),
+            x: BigInt::from(5),
+        });
+        a.push(Field {
+            pp: params.clone(),
+            x: BigInt::from(17),
+        });
+        a.push(Field {
+            pp: params.clone(),
+            x: BigInt::from(13),
+        });
 
-        b.push(Field{ pp: params.clone(), x: BigInt::from(19)});
-        b.push(Field{ pp: params.clone(), x: BigInt::from(3)});
-        b.push(Field{ pp: params.clone(), x: BigInt::from(6)});
-        b.push(Field{ pp: params.clone(), x: BigInt::from(12)});
-        b.push(Field{ pp: params.clone(), x: BigInt::from(7)});
+        b.push(Field {
+            pp: params.clone(),
+            x: BigInt::from(19),
+        });
+        b.push(Field {
+            pp: params.clone(),
+            x: BigInt::from(3),
+        });
+        b.push(Field {
+            pp: params.clone(),
+            x: BigInt::from(6),
+        });
+        b.push(Field {
+            pp: params.clone(),
+            x: BigInt::from(12),
+        });
+        b.push(Field {
+            pp: params.clone(),
+            x: BigInt::from(7),
+        });
 
         assert_eq!(BigInt::from(502), scalar_inner_product(&a, &b).x);
     }
@@ -435,19 +531,43 @@ mod tests {
     fn multiexponentiation_test() {
         let params = ElGamalPP::generate_from_rfc7919(SupportedGroups::FFDHE2048);
         let mut a: Vec<Field> = Vec::new();
-        a.push(Field{ pp: params.clone(), x: BigInt::from(5)});
-        a.push(Field{ pp: params.clone(), x: BigInt::from(2)});
-        a.push(Field{ pp: params.clone(), x: BigInt::from(7)});
-        a.push(Field{ pp: params.clone(), x: BigInt::from(3)});
+        a.push(Field {
+            pp: params.clone(),
+            x: BigInt::from(5),
+        });
+        a.push(Field {
+            pp: params.clone(),
+            x: BigInt::from(2),
+        });
+        a.push(Field {
+            pp: params.clone(),
+            x: BigInt::from(7),
+        });
+        a.push(Field {
+            pp: params.clone(),
+            x: BigInt::from(3),
+        });
 
         let mut G: Vec<Group> = Vec::new();
-        G.push(Group{ pp: params.clone(), g: BigInt::from(3)});
-        G.push(Group{ pp: params.clone(), g: BigInt::from(8)});
-        G.push(Group{ pp: params.clone(), g: BigInt::from(2)});
-        G.push(Group{ pp: params.clone(), g: BigInt::from(9)});
+        G.push(Group {
+            pp: params.clone(),
+            g: BigInt::from(3),
+        });
+        G.push(Group {
+            pp: params.clone(),
+            g: BigInt::from(8),
+        });
+        G.push(Group {
+            pp: params.clone(),
+            g: BigInt::from(2),
+        });
+        G.push(Group {
+            pp: params.clone(),
+            g: BigInt::from(9),
+        });
 
         let expected = BigInt::mod_mul(&BigInt::from(1451188224), &BigInt::one(), &params.q);
-        
+
         assert_eq!(expected, multiexponentiation(&G, &a).g)
     }
 
@@ -543,9 +663,3 @@ mod tests {
     }
     */
 }
-
-
-
-
-
-
