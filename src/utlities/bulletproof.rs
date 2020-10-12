@@ -18,6 +18,7 @@ use crate::utlities::inner_product_refined::*;
 use elgamal::ElGamalPP;
 use curv::arithmetic::traits::{Modulo, Samplable};
 use std::ops::{Shl, Shr};
+use itertools::iterate;
 use curv::cryptographic_primitives::hashing::hash_sha256::HSha256;
 use curv::cryptographic_primitives::hashing::traits::*;
 use curv::BigInt;
@@ -56,6 +57,8 @@ pub trait BPRangeProof<T, W, S> {
     fn prove(w: &W, s: &S) -> T;
 
     fn verify(&self, s: &S) -> Result<(), BulletproofError>;
+
+    fn aggregated_verify(&self, s: &S) -> Result<(), BulletproofError>;
 
     fn validate_stmt_wit(stmt: &S, wit: &W);
 
@@ -121,6 +124,8 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement> for RangeProof {
         // generate challenge y, z
         let y = HSha256::create_hash(&[&A, &S, &BigInt::from(0)]);
         let z = HSha256::create_hash(&[&A, &S, &BigInt::from(1)]);
+        let y = y.modulus(&q);
+        let z = z.modulus(&q);
         let y_powers = (0..nm)
             .map(|i| {
                 BigInt::mod_pow(&y, &BigInt::from(i as u64), &q)
@@ -171,6 +176,7 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement> for RangeProof {
 
         // generate challenge x
         let x = HSha256::create_hash(&[&A, &S, &T1, &T2]);
+        let x = x.modulus(&q);
         let x_sq = BigInt::mod_mul(&x, &x, &q);
 
         // compute taux and miu
@@ -273,9 +279,12 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement> for RangeProof {
         // regenerate challenges x, y, z
         let y = HSha256::create_hash(&[&self.A, &self.S, &BigInt::from(0)]);
         let z = HSha256::create_hash(&[&self.A, &self.S, &BigInt::from(1)]);
+        let x = HSha256::create_hash(&[&self.A, &self.S, &self.T1, &self.T2]);
+        let y = y.modulus(&q);
+        let x = x.modulus(&q);
+        let z = z.modulus(&q);
         let z_minus = BigInt::mod_sub(&q, &z, &q);
         let z_sq = BigInt::mod_mul(&z, &z, &q);
-        let x = HSha256::create_hash(&[&self.A, &self.S, &self.T1, &self.T2]);
         let x_sq = BigInt::mod_mul(&x, &x, &q);
 
         // compute delta(y, z)
@@ -383,6 +392,232 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement> for RangeProof {
         }
     }
 
+    fn aggregated_verify(&self, stmt: &BPStatement) -> Result<(), BulletproofError> {
+
+        let m = stmt.commitments.len();
+        let n = stmt.num_bits;
+        let nm = n * m;
+        let g = &stmt.g;
+        let h = &stmt.h;
+        let u = &stmt.u;
+        let g_vec = &stmt.g_vec;
+        let h_vec = &stmt.h_vec;
+        let pp = stmt.params.clone();
+        // let p = pp.p.clone();
+        let q = pp.q.clone();
+        let two = BigInt::from(2);
+        let one = BigInt::from(1);
+        let lg_nm = self.inner_product_proof.L.len();
+        let ped_com = &stmt.commitments;
+
+        // All of the input vectors must have the same length.
+        assert_eq!(g_vec.len(), nm);
+        assert_eq!(h_vec.len(), nm);
+        assert!(nm.is_power_of_two(), "(n*m) must be a power of two!");
+        assert!(
+            lg_nm <= 64,
+            "Not compatible for vector sizes greater than 2^64!"
+        );
+
+        // regenerate challenges x, y, z
+        let y = HSha256::create_hash(&[&self.A, &self.S, &BigInt::from(0)]);
+        let z = HSha256::create_hash(&[&self.A, &self.S, &BigInt::from(1)]);
+        let xx = HSha256::create_hash(&[&self.A, &self.S, &self.T1, &self.T2]);
+        let y = y.modulus(&q);
+        let xx = xx.modulus(&q);
+        let z = z.modulus(&q);
+        let y_inv = BigInt::mod_inv(&y, &q);
+        // let z_minus = BigInt::mod_sub(&q, &z, &q);
+        let z_sq = BigInt::mod_mul(&z, &z, &q);
+        let xx_sq = BigInt::mod_mul(&xx, &xx, &q);
+
+        // generate a random scalar to combine 2 verification equations
+        let c = HSha256::create_hash(&[&self.A, &self.S, &self.T1, &self.T2, &u]);
+
+        // z2_vec = (z^2, z^3, z^4, ..., z^{m+1})
+        let z2_vec = iterate(z_sq.clone(), |i| BigInt::mod_mul(&i, &z, &q))
+            .take(m)
+            .collect::<Vec<BigInt>>();
+
+        // y_vec = (1, y, y^2, ..., y^{nm-1})
+        let y_vec = iterate(one.clone(), |i| BigInt::mod_mul(&i, &y, &q))
+            .take(nm)
+            .collect::<Vec<BigInt>>();
+
+        // sum_y_pow = 1 + y + ... + y^{nm}
+        let sum_y_pow = y_vec
+            .iter()
+            .fold(BigInt::zero(), |acc, x| BigInt::mod_add(&acc, &x, &q));
+
+        // vec_2n = (1, 2, 2^2, 2^3, ..., 2^{n})
+        let vec_2n = iterate(one.clone(), |i| BigInt::mod_mul(&i, &two, &q))
+            .take(n)
+            .collect::<Vec<BigInt>>();
+
+        // y_inv_vec = (1, y^{-1}, y^{-2}, ..., y^{-(nm-1)})
+        let y_inv_vec = iterate(one.clone(), |i| BigInt::mod_mul(&i, &y_inv, &q))
+            .take(nm)
+            .collect::<Vec<BigInt>>();
+
+        // d = z^2 d1 + z^3 d2 + ... + z^{m+1} dm
+        // where dj = (0^{(j-1)n} || 2^{n} || 0^{(m-j)n}) \in \Z_q^{mn}
+        let d = (0..nm)
+            .map(|i| {
+                let k = i % n;
+                let two_i = vec_2n[k].clone();
+                let j = i / n;
+                let z_j_2 = z2_vec[j].clone();
+                BigInt::mod_mul(&two_i, &z_j_2, &q)
+            })
+            .collect::<Vec<BigInt>>();
+
+        // sum_d = <1^{mn}, d>
+        let sum_d = d
+            .iter()
+            .fold(BigInt::zero(), |acc, x| BigInt::mod_add(&acc, &x, &q));
+
+        // compute delta(y, z):
+        let z_minus_zsq = BigInt::mod_sub(&z, &z_sq, &q);
+        let z_minus_zsq_sum_y = BigInt::mod_mul(&z_minus_zsq, &sum_y_pow, &q);
+        let sum_d_z = BigInt::mod_mul(&sum_d, &z, &q);
+        let delta = BigInt::mod_sub(&z_minus_zsq_sum_y, &sum_d_z, &q);
+
+        // compute sg and sh vectors (unrolling ipp verification)
+        let mut x_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_nm);
+        let mut x_inv_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_nm);
+        let mut minus_x_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_nm);
+        let mut minus_x_inv_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_nm);
+        let mut allinv = BigInt::one();
+        for (Li, Ri) in self
+            .inner_product_proof
+            .L
+            .iter()
+            .zip(self.inner_product_proof.R.iter())
+        {
+            let x = HSha256::create_hash(&[&Li, &Ri, &u]);
+            let x = x.modulus(&q);
+            let x_inv = BigInt::mod_inv(&x, &q);
+            
+            let x_sq = BigInt::mod_mul(&x, &x, &q);
+            let x_inv_sq = BigInt::mod_mul(&x_inv, &x_inv, &q);
+
+            x_sq_vec.push(x_sq.clone());
+            x_inv_sq_vec.push(x_inv_sq.clone());
+            minus_x_sq_vec.push(BigInt::mod_sub(&BigInt::zero(), &x_sq, &q));
+            minus_x_inv_sq_vec.push(BigInt::mod_sub(&BigInt::zero(), &x_inv_sq, &q));
+            allinv = BigInt::mod_mul(&allinv, &x_inv, &q);
+        }
+
+        let mut s: Vec<BigInt> = Vec::with_capacity(nm);
+        s.push(allinv);
+        for i in 1..nm {
+            let lg_i =
+                (std::mem::size_of_val(&nm) * 8) - 1 - ((i as usize).leading_zeros() as usize);
+            let k = 1 << lg_i;
+            // The challenges are stored in "creation order" as [x_k,...,x_1],
+            // so u_{lg(i)+1} = is indexed by (lg_n-1) - lg_i
+            let x_lg_i_sq = x_sq_vec[(lg_nm - 1) - lg_i].clone();
+            s.push(s[i - k].clone() * x_lg_i_sq);
+        }
+
+        let a_times_s: Vec<BigInt> = (0..nm)
+            .map(|i| BigInt::mod_mul(&s[i], &self.inner_product_proof.a_tag, &q))
+            .collect();
+
+        let b_times_sinv: Vec<BigInt> = (0..nm)
+            .map(|i| {
+                let s_inv_i = BigInt::mod_inv(&s[i], &q);
+                BigInt::mod_mul(&s_inv_i, &self.inner_product_proof.b_tag, &q)
+            })
+            .collect();
+        
+        // exponent of g_vec
+        let scalar_g_vec: Vec<BigInt> = (0..nm)
+            .map(|i| BigInt::mod_add(&a_times_s[i], &z, &q))
+            .collect();
+
+        // exponent of h_vec
+        let scalar_h_vec: Vec<BigInt> = (0..nm)
+            .map(|i| {
+                let b_sinv_plus_di = BigInt::mod_sub(&b_times_sinv[i], &d[i], &q);
+                let y_inv_b_sinv_plus_di = BigInt::mod_mul(&y_inv_vec[i], &b_sinv_plus_di, &q);
+                BigInt::mod_sub(&y_inv_b_sinv_plus_di, &z, &q)
+            })
+            .collect();
+
+        // exponent of u
+        let ab = BigInt::mod_mul(
+            &self.inner_product_proof.a_tag,
+            &self.inner_product_proof.b_tag,
+            &q,
+        );
+        let scalar_u = BigInt::mod_sub(&ab, &self.tx, &q);
+
+        // exponent of g
+        let delta_minus_tx = BigInt::mod_sub(&delta, &self.tx, &q);
+        let scalar_g = BigInt::mod_mul(&c, &delta_minus_tx, &q);
+
+        // exponent of h
+        let c_times_taux = BigInt::mod_mul(&c, &self.tau_x, &q);
+        let scalar_h = BigInt::mod_sub(&self.miu, &c_times_taux, &q);
+
+        // exponents of A, S
+        // let scalar_A = BigInt::mod_sub(&BigInt::zero(), &one, &q);
+        let scalar_S = BigInt::mod_sub(&BigInt::zero(), &xx, &q);
+
+        // exponent of L, R
+        let scalar_L = minus_x_sq_vec.clone();
+        let scalar_R = minus_x_inv_sq_vec.clone();
+
+        // exponents of commitments
+        let scalar_coms: Vec<BigInt> = (0..m)
+            .map(|i| BigInt::mod_mul(&c, &z2_vec[i], &q))
+            .collect();
+
+        // exponents of T_1, T_2
+        let scalar_T1 = BigInt::mod_mul(&c, &xx, &q);
+        let scalar_T2 = BigInt::mod_mul(&c, &xx_sq, &q);
+
+        // compute concatenated exponent vector
+        let mut scalars: Vec<BigInt> = Vec::with_capacity(2 * nm + 2 * lg_nm + m + 6);
+        scalars.extend_from_slice(&scalar_g_vec);
+        scalars.extend_from_slice(&scalar_h_vec);
+        scalars.push(scalar_g);
+        scalars.push(scalar_h);
+        scalars.push(scalar_u);
+        // scalars.push(scalar_A);
+        scalars.push(scalar_S);
+        scalars.extend_from_slice(&scalar_L);
+        scalars.extend_from_slice(&scalar_R);
+        scalars.extend_from_slice(&scalar_coms);
+        scalars.push(scalar_T1);
+        scalars.push(scalar_T2);
+
+        // compute concatenated base vector
+        let mut points: Vec<BigInt> = Vec::with_capacity(2 * nm + 2 * lg_nm + m + 6);
+        points.extend_from_slice(g_vec);
+        points.extend_from_slice(h_vec);
+        points.push((*g).clone());
+        points.push((*h).clone());
+        points.push((*u).clone());
+        // points.push(self.A);
+        points.push(self.S.clone());
+        points.extend_from_slice(&self.inner_product_proof.L);
+        points.extend_from_slice(&self.inner_product_proof.R);
+        points.extend_from_slice(&ped_com);
+        points.push(self.T1.clone());
+        points.push(self.T2.clone());
+
+        // single multi-exponentiation check
+        let result = multiexponentiation(&points, &scalars, &pp, true);
+
+        if result == self.A {
+            Ok(())
+        } else {
+            Err(BPRangeProofError)
+        }
+    }
+
     fn validate_stmt_wit(stmt: &BPStatement, wit: &BPWitness) {
        unimplemented!();
     }
@@ -397,7 +632,7 @@ pub mod tests {
     use crate::utlities::bulletproof::*;
     use elgamal::rfc7919_groups::SupportedGroups;
 
-    fn test_helper(n: usize, m: usize) {
+    fn test_helper(n: usize, m: usize, aggregated: bool, out_of_range: bool) {
         let nm = n * m;
         let params = ElGamalPP::generate_from_rfc7919(SupportedGroups::FFDHE2048);
 
@@ -427,9 +662,14 @@ pub mod tests {
 
         // generate witness vectors
         let range = BigInt::from(2).pow(n as u32);
-        let v_vec = (0..m)
+        let mut v_vec = (0..m)
             .map(|_| BigInt::sample_below(&range))
             .collect::<Vec<BigInt>>();
+
+        if out_of_range {
+            let bad_v = BigInt::from(2).pow(n as u32 + 2);
+            v_vec[m - 1] = bad_v;
+        }
 
         let r_vec = (0..m).map(|_| BigInt::sample_below(&params.q)).collect::<Vec<BigInt>>();
 
@@ -459,18 +699,46 @@ pub mod tests {
         };
 
         let range_proof = RangeProof::prove(&wit, &stmt);
-        let verify = range_proof.verify(&stmt);
-        assert!(verify.is_ok());
+        let mut _verify;
+        if aggregated {
+            _verify = range_proof.aggregated_verify(&stmt);
+        }
+        else {
+            _verify = range_proof.verify(&stmt);
+        } 
+        assert!(_verify.is_ok());
     }
 
     #[test]
     fn test_batch_4_range_proof_32() {
-        test_helper(32, 4)
+        test_helper(32, 4, false, false)
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_batch_4_range_proof_32_out_of_range() {
+        test_helper(32, 4, false, true)
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_agg_4_range_proof_32_out_of_range() {
+        test_helper(32, 4, false, true)
     }
 
     #[test]
     fn test_batch_16_range_proof_64() {
-        test_helper(64, 16)
+        test_helper(64, 16, false, false)
+    }
+
+    #[test]
+    fn test_agg_4_range_proof_32() {
+        test_helper(32, 4, true, false)
+    }
+
+    #[test]
+    fn test_agg_16_range_proof_64() {
+        test_helper(64, 16, true, false)
     }
 }
 
