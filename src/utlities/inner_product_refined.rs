@@ -48,6 +48,8 @@ pub trait InnerProductProof<T, W, S, B> {
 
     fn verify(&self, s: &S) -> Result<(), BulletproofError>;
 
+    fn fast_verify(&self, s: &S) -> Result<(), BulletproofError>;
+
     fn validate_stmt_wit(stmt: &S, wit: &W);
 
     fn validate_proof(&self, stmt: &IPStatement);
@@ -257,6 +259,96 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt> for IPProof {
         }     
     }
 
+    fn fast_verify(&self, stmt: &IPStatement) -> Result<(), BulletproofError> {
+
+        IPProof::validate_proof(self, stmt);
+
+        let G = &stmt.g_vec;
+        let H = &stmt.h_vec;
+        let n = G.len();
+        let pp = stmt.params.clone();
+        let order_f = pp.q.clone();
+        let P = &stmt.P;
+        let u = &stmt.u;
+        let g_vec = &stmt.g_vec;
+        let h_vec = &stmt.h_vec;
+
+        // All of the input vectors must have the same length.
+        assert_eq!(H.len(), n);
+        assert!(n.is_power_of_two());
+
+        let lg_n = self.L.len();
+        assert!(
+            lg_n <= 64,
+            "Not compatible for vector sizes greater than 2^64!"
+        );
+
+        let mut x_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_n);
+        let mut x_inv_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_n);
+        let mut minus_x_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_n);
+        let mut minus_x_inv_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_n);
+        let mut allinv = BigInt::one();
+        for (Li, Ri) in self.L.iter().zip(self.R.iter()) {
+            let x = HSha256::create_hash(&[&Li, &Ri, &u]);
+            let x_inv = BigInt::mod_inv(&x, &order_f);
+            let x_sq = BigInt::mod_mul(&x, &x, &order_f);
+            let x_inv_sq = BigInt::mod_mul(&x_inv, &x_inv, &order_f);
+
+            x_sq_vec.push(x_sq.clone());
+            x_inv_sq_vec.push(x_inv_sq.clone());
+            minus_x_sq_vec.push(BigInt::mod_sub(&BigInt::zero(), &x_sq, &order_f));
+            minus_x_inv_sq_vec.push(BigInt::mod_sub(&BigInt::zero(), &x_inv_sq, &order_f));
+            allinv = BigInt::mod_mul(&allinv, &x_inv, &order_f);
+        }
+
+        let mut s: Vec<BigInt> = Vec::with_capacity(n);
+        s.push(allinv);
+        for i in 1..n {
+            let lg_i =
+                (std::mem::size_of_val(&n) * 8) - 1 - ((i as usize).leading_zeros() as usize);
+            let k = 1 << lg_i;
+            // The challenges are stored in "creation order" as [x_k,...,x_1],
+            // so u_{lg(i)+1} = is indexed by (lg_n-1) - lg_i
+            let x_lg_i_sq = x_sq_vec[(lg_n - 1) - lg_i].clone();
+            s.push(s[i - k].clone() * x_lg_i_sq);
+        }
+
+        let a_times_s: Vec<BigInt> = (0..n)
+            .map(|i| BigInt::mod_mul(&s[i], &self.a_tag, &order_f))
+            .collect();
+
+        let b_div_s: Vec<BigInt> = (0..n)
+            .map(|i| {
+                let s_inv_i = BigInt::mod_inv(&s[i], &order_f);
+                BigInt::mod_mul(&s_inv_i, &self.b_tag, &order_f)
+            })
+            .collect();
+
+        let c = BigInt::mod_mul(&self.a_tag, &self.b_tag, &order_f);
+
+        let mut scalars: Vec<BigInt> = Vec::with_capacity(2 * n + 2 * lg_n + 1);
+        scalars.extend_from_slice(&a_times_s);
+        scalars.extend_from_slice(&b_div_s);
+        scalars.extend_from_slice(&minus_x_sq_vec);
+        scalars.extend_from_slice(&minus_x_inv_sq_vec);
+        scalars.push(c.clone());
+
+        let mut points: Vec<BigInt> = Vec::with_capacity(2 * n + 2 * lg_n + 1);
+        points.extend_from_slice(g_vec);
+        points.extend_from_slice(h_vec);
+        points.extend_from_slice(&self.L);
+        points.extend_from_slice(&self.R);
+        points.push(u.clone());
+
+        let expect_P = multiexponentiation(&points, &scalars, &pp, true);
+
+        if *P == expect_P {
+            Ok(())
+        } else {
+            Err(InnerProductError)
+        }
+    }
+
     fn validate_stmt_wit(stmt: &IPStatement, wit: &IPWitness) {
         let p = stmt.params.p.clone();
         let q = stmt.params.q.clone();
@@ -342,7 +434,7 @@ mod tests {
     use elgamal::rfc7919_groups::SupportedGroups;
     use elgamal::ElGamalPP;
 
-    fn test_helper(n: usize) {
+    fn test_helper(n: usize, unrolled: bool) {
         let params = ElGamalPP::generate_from_rfc7919(SupportedGroups::FFDHE2048);
 
         let g_vec = (0..n)
@@ -398,8 +490,14 @@ mod tests {
         let mut R_vec = Vec::with_capacity(lg_n);
 
         let ipp = IPProof::prove(&wit, &stmt, &mut L_vec, &mut R_vec);
-        let ip_verify = ipp.verify(&stmt);
-        assert!(ip_verify.is_ok())
+        let mut _ip_verify;
+        if unrolled {
+            _ip_verify = ipp.fast_verify(&stmt);
+        }
+        else {
+            _ip_verify = ipp.verify(&stmt);
+        }
+        assert!(_ip_verify.is_ok())
     }
 
     #[test]
@@ -444,26 +542,51 @@ mod tests {
 
     #[test]
     fn make_ipp_1() {
-        test_helper(1)
+        test_helper(1, false)
     }
 
     #[test]
     fn make_ipp_2() {
-        test_helper(2)
+        test_helper(2, false)
     }
 
     #[test]
     fn make_ipp_4() {
-        test_helper(4)
+        test_helper(4, false)
     }
 
     #[test]
     fn make_ipp_8() {
-        test_helper(8)
+        test_helper(8, false)
     }
 
     #[test]
     fn make_ipp_64() {
-        test_helper(64)
+        test_helper(64, false)
+    }
+
+    #[test]
+    fn make_ipp_unrolled_1() {
+        test_helper(1, true)
+    }
+
+    #[test]
+    fn make_ipp_unrolled_2() {
+        test_helper(2, true)
+    }
+
+    #[test]
+    fn make_ipp_unrolled_4() {
+        test_helper(4, true)
+    }
+
+    #[test]
+    fn make_ipp_unrolled_8() {
+        test_helper(8, true)
+    }
+
+    #[test]
+    fn make_ipp_unrolled_64() {
+        test_helper(64, true)
     }
 }
