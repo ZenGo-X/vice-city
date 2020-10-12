@@ -22,17 +22,17 @@ use curv::BigInt;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Group {
-    pp: ElGamalPP,
-    g: BigInt,
+    pub pp: ElGamalPP,
+    pub g: BigInt,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Field {
-    pp: ElGamalPP,
-    x: BigInt,
+    pub pp: ElGamalPP,
+    pub x: BigInt,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct InnerProductArg {
     pub(super) L: Vec<Group>,
     pub(super) R: Vec<Group>,
@@ -133,7 +133,7 @@ impl InnerProductArg {
                     let GLx_inv = BigInt::mod_pow(&G_L[i].g, &x_inv, &p);
                     let GRx = BigInt::mod_pow(&G_R[i].g, &x, &p);
                     let G_new_element = BigInt::mod_mul(&GRx, &GLx_inv, &p);
-                    println!("G[{}] = {}", i, G_new_element);
+                    // println!("G[{}] = {}", i, G_new_element);
                     Group {
                         pp: params.clone(),
                         g: G_new_element,
@@ -146,7 +146,7 @@ impl InnerProductArg {
                     let HLx = BigInt::mod_pow(&H_L[i].g, &x, &p);
                     let HRx_inv = BigInt::mod_pow(&H_R[i].g, &x_inv, &p);
                     let H_new_element = BigInt::mod_mul(&HRx_inv, &HLx, &p);
-                    println!("H[{}] = {}", i, H_new_element);
+                    // println!("H[{}] = {}", i, H_new_element);
                     Group {
                         pp: params.clone(),
                         g: H_new_element,
@@ -202,7 +202,7 @@ impl InnerProductArg {
                     let GLx_inv = BigInt::mod_pow(&G_L[i].g, &x_inv, &p);
                     let GRx = BigInt::mod_pow(&G_R[i].g, &x, &p);
                     let G_new_element = BigInt::mod_mul(&GRx, &GLx_inv, &p);
-                    println!("G[{}] = {}", i, G_new_element);
+                    // println!("G[{}] = {}", i, G_new_element);
                     Group {
                         pp: params.clone(),
                         g: G_new_element,
@@ -215,7 +215,7 @@ impl InnerProductArg {
                     let HLx = BigInt::mod_pow(&H_L[i].g, &x, &p);
                     let HRx_inv = BigInt::mod_pow(&H_R[i].g, &x_inv, &p);
                     let H_new_element = BigInt::mod_mul(&HRx_inv, &HLx, &p);
-                    println!("H[{}] = {}", i, H_new_element);
+                    // println!("H[{}] = {}", i, H_new_element);
                     Group {
                         pp: params.clone(),
                         g: H_new_element,

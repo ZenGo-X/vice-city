@@ -32,5 +32,5 @@ pub enum ProofError {
 pub enum BulletproofError {
     SetupError,
     InnerProductError,
-    RangeProofError,
+    BPRangeProofError,
 }
