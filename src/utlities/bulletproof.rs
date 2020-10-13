@@ -641,26 +641,31 @@ pub mod tests {
         // generate generators
         let g_vec = (0..nm)
             .map(|_| {
-                let r = BigInt::sample_below(&params.q);
-                BigInt::mod_pow(&params.g, &r, &params.p)
+                let r = BigInt::sample_below(&params.p);
+                BigInt::mod_pow(&r, &BigInt::from(2), &params.p)
+                // BigInt::mod_pow(&params.g, &r, &params.p)
             })
             .collect::<Vec<BigInt>>();
 
         let h_vec = (0..nm)
             .map(|_| {
-                let r = BigInt::sample_below(&params.q);
-                BigInt::mod_pow(&params.g, &r, &params.p)
+                let r = BigInt::sample_below(&params.p);
+                BigInt::mod_pow(&r, &BigInt::from(2), &params.p)
+                // BigInt::mod_pow(&params.g, &r, &params.p)
             })
             .collect::<Vec<BigInt>>();
 
-        let r = BigInt::sample_below(&params.q);
-        let g = BigInt::mod_pow(&params.g, &r, &params.p);
+        let r = BigInt::sample_below(&params.p);
+        // let g = BigInt::mod_pow(&params.g, &r, &params.p);
+        let g = BigInt::mod_pow(&r, &BigInt::from(2), &params.p);
 
-        let r = BigInt::sample_below(&params.q);
-        let h = BigInt::mod_pow(&params.g, &r, &params.p);
+        let r = BigInt::sample_below(&params.p);
+        // let h = BigInt::mod_pow(&params.g, &r, &params.p);
+        let h = BigInt::mod_pow(&r, &BigInt::from(2), &params.p);
 
-        let r = BigInt::sample_below(&params.q);
-        let u = BigInt::mod_pow(&params.g, &r, &params.p);
+        let r = BigInt::sample_below(&params.p);
+        // let u = BigInt::mod_pow(&params.g, &r, &params.p);
+        let u = BigInt::mod_pow(&r, &BigInt::from(2), &params.p);
 
         // generate witness vectors
         let range = BigInt::from(2).pow(n as u32);
