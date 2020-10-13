@@ -620,8 +620,25 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement> for RangeProof {
         }
     }
 
-    fn validate_stmt_wit(_stmt: &BPStatement, _wit: &BPWitness) {
-       unimplemented!();
+    fn validate_stmt_wit(stmt: &BPStatement, wit: &BPWitness) {
+
+        // pub g: BigInt,                   // \
+        // pub h: BigInt,                   // |
+        // pub u: BigInt,                   // |
+        // pub g_vec: Vec<BigInt>,          //  > common reference string
+        // pub h_vec: Vec<BigInt>,          // | 
+        // pub params: ElGamalPP,           // |
+        // pub num_bits: usize,             // /
+        // pub commitments: Vec<BigInt>,    // pedersen commitments
+
+        let g = &stmt.g;
+        let h = &stmt.h;
+        let g_vec = &stmt.g_vec;
+        let h_vec = &stmt.h_vec;
+        let pp = &stmt.params;
+        let com = &stmt.commitments;
+
+        
     }
 
     fn validate_wit(_wit: &BPWitness) {

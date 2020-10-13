@@ -384,6 +384,18 @@ pub fn validate_in_group(input: &[BigInt], tag: &str, order: &BigInt) {
     }
 }
 
+pub fn validate_in_subgroup(input: &[BigInt], tag: &str, pp: &ElGamalPP) {
+    let k = input.len();
+    for i in 0..k {
+        let check_power = BigInt::mod_pow(&input[i], &pp.q, &pp.p);
+        assert_eq!(
+            check_power,
+            BigInt::one(),
+            "Element {}[{}] is invalid!", tag, i
+        );
+    }
+}
+
 pub fn scalar_inner_product(a: &[BigInt], b: &[BigInt], pp: &ElGamalPP, in_group: bool) -> BigInt {
     assert_eq!(
         a.len(),
@@ -538,6 +550,19 @@ mod tests {
             _ip_verify = ipp.verify(&stmt);
         }
         assert!(_ip_verify.is_ok())
+    }
+
+    #[test]
+    fn test_in_subgroup() {
+        let params = ElGamalPP::generate_from_rfc7919(SupportedGroups::FFDHE2048);
+        let n = 10;
+        let mut elements = Vec::with_capacity(n);
+        for _ in 0..n {
+            let r = BigInt::sample_below(&params.q);
+            let g = BigInt::mod_pow(&r, &BigInt::from(2), &params.p);
+            elements.push(g)
+        }
+        validate_in_subgroup(&elements, "g_vec", &params);
     }
 
     #[test]
