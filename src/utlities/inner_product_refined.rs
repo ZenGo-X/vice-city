@@ -283,22 +283,24 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt> for IPProof {
             "Not compatible for vector sizes greater than 2^64!"
         );
 
+        let mut x_vec: Vec<BigInt> = Vec::with_capacity(lg_n);
         let mut x_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_n);
-        let mut x_inv_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_n);
         let mut minus_x_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_n);
         let mut minus_x_inv_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_n);
-        let mut allinv = BigInt::one();
         for (Li, Ri) in self.L.iter().zip(self.R.iter()) {
             let x = HSha256::create_hash(&[&Li, &Ri, &u]);
-            let x_inv = BigInt::mod_inv(&x, &order_f);
+            let x = x.modulus(&order_f);
             let x_sq = BigInt::mod_mul(&x, &x, &order_f);
-            let x_inv_sq = BigInt::mod_mul(&x_inv, &x_inv, &order_f);
-
+            
+            x_vec.push(x.clone());
             x_sq_vec.push(x_sq.clone());
-            x_inv_sq_vec.push(x_inv_sq.clone());
             minus_x_sq_vec.push(BigInt::mod_sub(&BigInt::zero(), &x_sq, &order_f));
+        }
+
+        let allinv = batch_invert(&mut x_vec, &pp, true);
+        for i in 0..lg_n {
+            let x_inv_sq = BigInt::mod_mul(&x_vec[i], &x_vec[i], &order_f);
             minus_x_inv_sq_vec.push(BigInt::mod_sub(&BigInt::zero(), &x_inv_sq, &order_f));
-            allinv = BigInt::mod_mul(&allinv, &x_inv, &order_f);
         }
 
         let mut s: Vec<BigInt> = Vec::with_capacity(n);
@@ -426,6 +428,39 @@ pub fn multiexponentiation(points: &[BigInt], scalars: &[BigInt], pp: &ElGamalPP
     return out;
 }
 
+pub fn batch_invert(scalars: &mut Vec<BigInt>, pp: &ElGamalPP, in_group: bool) -> BigInt {
+    let order = pp.q.clone();
+    let n = scalars.len();
+
+    if n == 0 {
+        return BigInt::one();
+    }
+
+    if !in_group {
+        validate_in_group(&scalars, "scalars", &order);
+    };
+
+    let mut prefix_prod = Vec::with_capacity(n);
+    prefix_prod.push(scalars[0].clone());
+    for i in 1..n {
+        prefix_prod.push(BigInt::mod_mul(&prefix_prod[i-1], &scalars[i], &order));
+    }
+
+    let allinv = BigInt::mod_inv(&prefix_prod[n-1], &order);
+    prefix_prod[n - 1] = allinv.clone();
+
+    for i in 1..n {
+        let temp = scalars[n - i].clone();
+        scalars[n - i] = BigInt::mod_mul(&prefix_prod[n - i], &prefix_prod[n - i - 1], &order);
+        prefix_prod[n - i - 1] = BigInt::mod_mul(&prefix_prod[n - i], &temp, &order);
+    }
+
+    scalars[0] = prefix_prod[0].clone();
+
+    return allinv;
+
+}
+
 #[cfg(test)]
 mod tests {
     use crate::utlities::inner_product_refined::*;
@@ -490,6 +525,7 @@ mod tests {
         let mut R_vec = Vec::with_capacity(lg_n);
 
         let ipp = IPProof::prove(&wit, &stmt, &mut L_vec, &mut R_vec);
+        println!("proof generated");
         let mut _ip_verify;
         if unrolled {
             _ip_verify = ipp.fast_verify(&stmt);
@@ -538,6 +574,21 @@ mod tests {
         let expected = BigInt::mod_mul(&BigInt::from(1451188224), &BigInt::one(), &params.p);
 
         assert_eq!(expected, super::multiexponentiation(&G, &a, &params, false));
+    }
+
+    #[test]
+    fn test_batch_inversion() {
+        let params = ElGamalPP::generate_from_rfc7919(SupportedGroups::FFDHE2048);
+        let order = params.q.clone();
+        let n = 64;
+        let mut scalars: Vec<BigInt> = (0..n).map(|_| BigInt::sample_below(&order)).collect();
+        let expected: Vec<BigInt> = (0..n)
+            .map(|i| {
+                BigInt::mod_inv(&scalars[i], &order)
+            })
+            .collect();
+        let _allinv = batch_invert(&mut scalars, &params, true);
+        assert_eq!(expected, scalars);
     }
 
     #[test]

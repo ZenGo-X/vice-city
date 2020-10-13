@@ -483,11 +483,10 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement> for RangeProof {
         let delta = BigInt::mod_sub(&z_minus_zsq_sum_y, &sum_d_z, &q);
 
         // compute sg and sh vectors (unrolling ipp verification)
+        let mut x_vec: Vec<BigInt> = Vec::with_capacity(lg_nm);
         let mut x_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_nm);
-        let mut x_inv_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_nm);
         let mut minus_x_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_nm);
         let mut minus_x_inv_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_nm);
-        let mut allinv = BigInt::one();
         for (Li, Ri) in self
             .inner_product_proof
             .L
@@ -496,16 +495,19 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement> for RangeProof {
         {
             let x = HSha256::create_hash(&[&Li, &Ri, &u]);
             let x = x.modulus(&q);
-            let x_inv = BigInt::mod_inv(&x, &q);
             
             let x_sq = BigInt::mod_mul(&x, &x, &q);
-            let x_inv_sq = BigInt::mod_mul(&x_inv, &x_inv, &q);
-
+            
+            x_vec.push(x.clone());
             x_sq_vec.push(x_sq.clone());
-            x_inv_sq_vec.push(x_inv_sq.clone());
             minus_x_sq_vec.push(BigInt::mod_sub(&BigInt::zero(), &x_sq, &q));
+        }
+
+        let allinv = batch_invert(&mut x_vec, &pp, true);
+
+        for i in 0..lg_nm {
+            let x_inv_sq = BigInt::mod_mul(&x_vec[i], &x_vec[i], &q);
             minus_x_inv_sq_vec.push(BigInt::mod_sub(&BigInt::zero(), &x_inv_sq, &q));
-            allinv = BigInt::mod_mul(&allinv, &x_inv, &q);
         }
 
         let mut s: Vec<BigInt> = Vec::with_capacity(nm);
@@ -618,11 +620,11 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement> for RangeProof {
         }
     }
 
-    fn validate_stmt_wit(stmt: &BPStatement, wit: &BPWitness) {
+    fn validate_stmt_wit(_stmt: &BPStatement, _wit: &BPWitness) {
        unimplemented!();
     }
 
-    fn validate_wit(wit: &BPWitness) {
+    fn validate_wit(_wit: &BPWitness) {
         unimplemented!();
     }
 }
