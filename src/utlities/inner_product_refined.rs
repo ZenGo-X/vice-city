@@ -43,7 +43,7 @@ pub struct IPWitness {
     pub b: Vec<BigInt>,
 }
 
-pub trait InnerProductProof<T, W, S, B> {
+pub trait InnerProductProof<T, W, S, B, P> {
     fn prove(w: &W, s: &S, L_vec: &mut Vec<B>, R_vec: &mut Vec<B>) -> T;
 
     fn verify(&self, s: &S) -> Result<(), BulletproofError>;
@@ -52,10 +52,10 @@ pub trait InnerProductProof<T, W, S, B> {
 
     fn validate_stmt_wit(stmt: &S, wit: &W);
 
-    fn validate_proof(&self, stmt: &IPStatement);
+    fn validate_proof(&self, pp: &ElGamalPP);
 }
 
-impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt> for IPProof {
+impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt, ElGamalPP> for IPProof {
     fn prove(wit: &IPWitness, stmt: &IPStatement, L_vec: &mut Vec<BigInt>, R_vec: &mut Vec<BigInt>) -> IPProof {
 
         IPProof::validate_stmt_wit(stmt, wit);
@@ -177,7 +177,7 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt> for IPProof {
 
     fn verify(&self, stmt: &IPStatement) -> Result<(), BulletproofError> {
         
-        IPProof::validate_proof(self, stmt);
+        IPProof::validate_proof(self, &stmt.params);
 
         let G = &stmt.g_vec;
         let H = &stmt.h_vec;
@@ -261,7 +261,7 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt> for IPProof {
 
     fn fast_verify(&self, stmt: &IPStatement) -> Result<(), BulletproofError> {
 
-        IPProof::validate_proof(self, stmt);
+        IPProof::validate_proof(self, &stmt.params);
 
         let G = &stmt.g_vec;
         let H = &stmt.h_vec;
@@ -352,33 +352,30 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt> for IPProof {
     }
 
     fn validate_stmt_wit(stmt: &IPStatement, wit: &IPWitness) {
-        let p = stmt.params.p.clone();
-        let q = stmt.params.q.clone();
-        validate_in_group(&[stmt.u.clone()], "u", &p);
-        validate_in_group(&stmt.g_vec, "g_vec", &p);
-        validate_in_group(&stmt.h_vec, "h_vec", &p);
-        validate_in_group(&[stmt.P.clone()], "P", &p);
-        validate_in_group(&wit.a, "a", &q);
-        validate_in_group(&wit.b, "b", &q);
+        let pp = &stmt.params;
+        validate_in_subgroup(&[stmt.u.clone()], "u", &pp);
+        validate_in_subgroup(&stmt.g_vec, "g_vec", &pp);
+        validate_in_subgroup(&stmt.h_vec, "h_vec", &pp);
+        validate_in_subgroup(&[stmt.P.clone()], "P", &pp);
+        validate_scalar(&wit.a, "a", &pp);
+        validate_scalar(&wit.b, "b", &pp);
     }
 
-    fn validate_proof(&self, stmt: &IPStatement) {
-        let p = stmt.params.p.clone();
-        let q = stmt.params.q.clone();
-        validate_in_group(&self.L, "L", &p);
-        validate_in_group(&self.R, "R", &p);
-        validate_in_group(&[self.a_tag.clone()], "a_tag", &q);
-        validate_in_group(&[self.b_tag.clone()], "b_tag", &q);
+    fn validate_proof(&self, pp: &ElGamalPP) {
+        validate_in_subgroup(&self.L, "L", &pp);
+        validate_in_subgroup(&self.R, "R", &pp);
+        validate_scalar(&[self.a_tag.clone()], "a_tag", &pp);
+        validate_scalar(&[self.b_tag.clone()], "b_tag", &pp);
     }
 }
 
 
-pub fn validate_in_group(input: &[BigInt], tag: &str, order: &BigInt) {
+pub fn validate_scalar(input: &[BigInt], tag: &str, pp: &ElGamalPP) {
     let k = input.len();
     for i in 0..k {
         let message = format!("Element {}[{}] is invalid!", tag, i);
         assert!(
-            input[i] <= *order, 
+            input[i] < pp.q, 
             message
         );
     }
@@ -406,8 +403,8 @@ pub fn scalar_inner_product(a: &[BigInt], b: &[BigInt], pp: &ElGamalPP, in_group
     let order = pp.q.clone();
     
     if !in_group {
-        validate_in_group(&a, "a", &order);
-        validate_in_group(&b, "b", &order);
+        validate_scalar(&a, "a", &pp);
+        validate_scalar(&b, "b", &pp);
     }
 
     let out = BigInt::zero();
@@ -428,8 +425,8 @@ pub fn multiexponentiation(points: &[BigInt], scalars: &[BigInt], pp: &ElGamalPP
     let order = pp.p.clone();
 
     if !in_group {
-        validate_in_group(&scalars, "scalars", &order);
-        validate_in_group(&points, "points", &order);
+        validate_scalar(&scalars, "scalars", &pp);
+        validate_in_subgroup(&points, "points", &pp);
     }
 
     let out = BigInt::one();
@@ -449,7 +446,7 @@ pub fn batch_invert(scalars: &mut Vec<BigInt>, pp: &ElGamalPP, in_group: bool) -
     }
 
     if !in_group {
-        validate_in_group(&scalars, "scalars", &order);
+        validate_scalar(&scalars, "scalars", &pp);
     };
 
     let mut prefix_prod = Vec::with_capacity(n);
@@ -541,7 +538,6 @@ mod tests {
         let mut R_vec = Vec::with_capacity(lg_n);
 
         let ipp = IPProof::prove(&wit, &stmt, &mut L_vec, &mut R_vec);
-        println!("proof generated");
         let mut _ip_verify;
         if unrolled {
             _ip_verify = ipp.fast_verify(&stmt);

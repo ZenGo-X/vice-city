@@ -53,7 +53,7 @@ pub struct BPStatement {
     pub commitments: Vec<BigInt>,    // pedersen commitments
 }
 
-pub trait BPRangeProof<T, W, S> {
+pub trait BPRangeProof<T, W, S, P> {
     fn prove(w: &W, s: &S) -> T;
 
     fn verify(&self, s: &S) -> Result<(), BulletproofError>;
@@ -62,11 +62,13 @@ pub trait BPRangeProof<T, W, S> {
 
     fn validate_stmt_wit(stmt: &S, wit: &W);
 
-    fn validate_wit(wit: &W);
+    fn validate_proof(&self, pp: &P);
 }
 
-impl BPRangeProof<RangeProof, BPWitness, BPStatement> for RangeProof {
+impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof {
     fn prove(wit: &BPWitness, stmt: &BPStatement) -> RangeProof {
+
+        RangeProof::validate_stmt_wit(&stmt, &wit);
         
         let m = wit.a_vec.len();
         let n = stmt.num_bits;
@@ -262,6 +264,9 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement> for RangeProof {
     }   
 
     fn verify(&self, stmt: &BPStatement) -> Result<(), BulletproofError> {
+
+        self.validate_proof(&stmt.params);
+
         let m = stmt.commitments.len();
         let n = stmt.num_bits;
         let nm = n * m;
@@ -393,6 +398,8 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement> for RangeProof {
     }
 
     fn aggregated_verify(&self, stmt: &BPStatement) -> Result<(), BulletproofError> {
+
+        self.validate_proof(&stmt.params);
 
         let m = stmt.commitments.len();
         let n = stmt.num_bits;
@@ -622,27 +629,38 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement> for RangeProof {
 
     fn validate_stmt_wit(stmt: &BPStatement, wit: &BPWitness) {
 
-        // pub g: BigInt,                   // \
-        // pub h: BigInt,                   // |
-        // pub u: BigInt,                   // |
-        // pub g_vec: Vec<BigInt>,          //  > common reference string
-        // pub h_vec: Vec<BigInt>,          // | 
-        // pub params: ElGamalPP,           // |
-        // pub num_bits: usize,             // /
-        // pub commitments: Vec<BigInt>,    // pedersen commitments
+        let mut points = Vec::new();
+        points.push(stmt.g.clone());
+        points.push(stmt.h.clone());
+        points.push(stmt.u.clone());
+        points.extend_from_slice(&stmt.g_vec);
+        points.extend_from_slice(&stmt.h_vec);
+        points.extend_from_slice(&stmt.commitments);
+        validate_in_subgroup(&points, "stmt", &stmt.params);
 
-        let g = &stmt.g;
-        let h = &stmt.h;
-        let g_vec = &stmt.g_vec;
-        let h_vec = &stmt.h_vec;
-        let pp = &stmt.params;
-        let com = &stmt.commitments;
+        let mut scalars = Vec::new();
+        scalars.extend_from_slice(&wit.a_vec);
+        scalars.extend_from_slice(&wit.gamma_vec);
+        validate_scalar(&scalars, "wit", &stmt.params);
 
-        
     }
 
-    fn validate_wit(_wit: &BPWitness) {
-        unimplemented!();
+    fn validate_proof(&self, pp: &ElGamalPP) {
+
+        let mut points = Vec::new();
+        points.push(self.A.clone());
+        points.push(self.S.clone());
+        points.push(self.T1.clone());
+        points.push(self.T2.clone());
+        validate_in_subgroup(&points, "points in bulletproof", &pp);
+
+        let mut scalars = Vec::new();
+        scalars.push(self.tx.clone());
+        scalars.push(self.tau_x.clone());
+        scalars.push(self.miu.clone());
+        validate_scalar(&scalars, "scalars in bulletproof", &pp);
+
+        self.inner_product_proof.validate_proof(&pp);
     }
 }
 
