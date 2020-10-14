@@ -8,7 +8,7 @@ use elgamal::ElGamalCiphertext;
 use elgamal::ElGamalPublicKey;
 
 /// This is a proof of knowledge that a pair of group elements {D, E}
-/// form a valid homomorphic ElGamal encryption (”in the exponent”) using public key Y .
+/// forms a valid homomorphic ElGamal encryption (”in the exponent”) using public key Y .
 /// The implementation was adapted to cyclic group of prime order from:
 /// https://github.com/ZenGo-X/curv/blob/master/src/cryptographic_primitives/proofs/sigma_correct_homomorphic_elgamal_enc.rs
 /// Specifically, the witness is ω = (x, r), the statement is δ = (g, h, c1, c2).

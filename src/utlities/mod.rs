@@ -8,10 +8,15 @@ pub mod dlog_proof;
 pub mod elgamal_enc_proof;
 pub mod equal_secret_proof;
 pub mod mod_proof;
+pub mod multiplication_proof;
 pub mod range_proof;
+
 pub mod inner_product;
 pub mod inner_product_refined;
 pub mod bulletproof;
+
+pub mod verlin_proof;
+pub const HASH_OUTPUT_BIT_SIZE: usize = 256;
 
 // This function implements H: {0,1}* -> Z_q
 fn hash(input: &[&BigInt], pp: &ElGamalPP, hash_output_bitlen: usize) -> BigInt {

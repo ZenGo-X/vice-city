@@ -3,6 +3,8 @@ use crate::protocols::two_party_rsa::hmrt::party_two::KeySetupFirstMsg as KeySet
 use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoCandidateGenerationFirstMsg;
 use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoCandidateGenerationSecondMsg;
 use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoCandidateGenerationThirdMsg;
+use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoComputeProductFirstMsg;
+use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoElgamalProductFirstMsg;
 use crate::protocols::two_party_rsa::hmrt::CiphertextPair;
 use crate::protocols::two_party_rsa::CANDIDATE_BIT_LENGTH;
 use crate::protocols::two_party_rsa::PAILLIER_MODULUS;
@@ -20,9 +22,13 @@ use crate::utlities::elgamal_enc_proof::HomoElGamalWitness;
 use crate::utlities::mod_proof::ModProof;
 use crate::utlities::mod_proof::ModStatement;
 use crate::utlities::mod_proof::ModWitness;
+use crate::utlities::multiplication_proof::MulProofElGamal;
+use crate::utlities::multiplication_proof::MulStatementElGamal;
+use crate::utlities::multiplication_proof::MulWitnessElGamal;
 use crate::utlities::range_proof::RangeProof;
 use crate::utlities::range_proof::Statement as BoundStatement;
 use crate::utlities::range_proof::Witness as BoundWitness;
+use crate::utlities::verlin_proof::VerlinStatementElGamal;
 use crate::TwoPartyRSAError;
 use curv::arithmetic::traits::Modulo;
 use curv::arithmetic::traits::Samplable;
@@ -34,17 +40,28 @@ use elgamal::ElGamalPP;
 use elgamal::ElGamalPrivateKey;
 use elgamal::ElGamalPublicKey;
 use elgamal::ExponentElGamal;
+use paillier::core::Randomness;
+use paillier::traits::Add;
 use paillier::traits::KeyGeneration;
 use paillier::DecryptionKey;
+use paillier::EncryptWithChosenRandomness;
 use paillier::EncryptionKey;
+use paillier::Open;
 use paillier::Paillier;
+use paillier::{RawCiphertext, RawPlaintext};
+use zk_paillier::zkproofs::CiphertextWitness;
 use zk_paillier::zkproofs::NICorrectKeyProof;
+use zk_paillier::zkproofs::VerlinStatement;
+use zk_paillier::zkproofs::SALT_STRING;
+use zk_paillier::zkproofs::{CiphertextProof, CiphertextStatement};
+use zk_paillier::zkproofs::{MulProof, MulStatement, MulWitness};
+use zk_paillier::zkproofs::{ZeroProof, ZeroStatement, ZeroWitness};
 
 // TODO: add zeroize if needed
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PartyOneKeySetup {
     pub local_paillier_pubkey: EncryptionKey,
-    pub local_elgamal_puubkey: ElGamalPublicKey,
+    pub local_elgamal_pubkey: ElGamalPublicKey,
     pub remote_paillier_pubkey: EncryptionKey,
     pub remote_elgamal_pubkey: ElGamalPublicKey,
     pub joint_elgamal_pubkey: ElGamalPublicKey,
@@ -97,6 +114,39 @@ pub struct PartyOneCandidateGenerationThirdMsg {
 pub struct PartyOneCandidateWitness {
     pub p_0: BigInt,
     pub r_0: BigInt,
+    pub r_0_paillier: BigInt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PartyOneComputeProduct {}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PartyOneComputeProductFirstMsg {
+    pub c_p: BigInt,
+    pub c_q: BigInt,
+    pub c_p_proof: CiphertextProof,
+    pub c_q_proof: CiphertextProof,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PartyOneComputeProductSecondMsg {
+    pub zero_proof: ZeroProof,
+    pub mul_proof: MulProof,
+    pub n_tilde: BigInt,
+    pub r_n_tilde: BigInt,
+    pub c_pi: BigInt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PartyOneElgamalProductFirstMsg {
+    pub c_p0q0: ElGamalCiphertext,
+    pub mul_proof_eg: MulProofElGamal,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PartyOneElgamalProductSecondMsg {
+    pub c_n_1_sk1: BigInt,
+    pub ddh_proof: DDHProof,
 }
 
 impl PartyOneKeySetup {
@@ -111,7 +161,7 @@ impl PartyOneKeySetup {
         let dlog_proof = DLogProof::prove(&witness, &pp);
 
         let (ek_new, dk_new) = Paillier::keypair_with_modulus_size(PAILLIER_MODULUS).keys();
-        let correct_key_proof = NICorrectKeyProof::proof(&dk_new);
+        let correct_key_proof = NICorrectKeyProof::proof(&dk_new, None);
 
         let party_one_private = PartyOnePrivate {
             dk: dk_new,
@@ -144,11 +194,11 @@ impl PartyOneKeySetup {
             Ok(()) => {
                 match party_two_first_message
                     .correct_key_proof
-                    .verify(&party_two_first_message.ek)
+                    .verify(&party_two_first_message.ek, SALT_STRING)
                 {
                     Ok(()) => Ok(PartyOneKeySetup {
                         local_paillier_pubkey: party_one_first_message.ek.clone(),
-                        local_elgamal_puubkey: party_one_first_message.pk.clone(),
+                        local_elgamal_pubkey: party_one_first_message.pk.clone(),
                         remote_paillier_pubkey: party_two_first_message.ek.clone(),
                         remote_elgamal_pubkey: party_two_first_message.pk.clone(),
                         joint_elgamal_pubkey: party_one_first_message
@@ -208,7 +258,11 @@ impl PartyOneCandidateGeneration {
         let bound_proof = RangeProof::prove(&bound_witness, &bound_statement).unwrap(); // TODO: handle error properly
 
         (
-            PartyOneCandidateWitness { p_0: p_i, r_0: r_i },
+            PartyOneCandidateWitness {
+                p_0: p_i,
+                r_0: r_i,
+                r_0_paillier: BigInt::zero(),
+            },
             PartyOneCandidateGenerationFirstMsg {
                 c_i,
                 pi_enc: enc_proof,
@@ -396,7 +450,7 @@ impl PartyOneCandidateGeneration {
         let statement_alpha = DDHStatement {
             pp: keys.joint_elgamal_pubkey.pp.clone(),
             g1: keys.joint_elgamal_pubkey.pp.g.clone(),
-            h1: keys.local_elgamal_puubkey.h.clone(),
+            h1: keys.local_elgamal_pubkey.h.clone(),
             g2: c_alpha_random.c1.clone(),
             h2: dec_key_alpha.clone(),
         };
@@ -406,7 +460,7 @@ impl PartyOneCandidateGeneration {
         let statement_alpha_tilde = DDHStatement {
             pp: keys.joint_elgamal_pubkey.pp.clone(),
             g1: keys.joint_elgamal_pubkey.pp.g.clone(),
-            h1: keys.local_elgamal_puubkey.h.clone(),
+            h1: keys.local_elgamal_pubkey.h.clone(),
             g2: c_alpha_tilde_random.c1.clone(),
             h2: dec_key_alpha_tilde.clone(),
         };
@@ -506,44 +560,335 @@ impl PartyOneCandidateGeneration {
         let dec_key_alpha = BigInt::mod_pow(
             &party_two_third_message.c_alpha_random.c1,
             &keys.private.sk.x,
-            &keys.joint_elgamal_pubkey.pp.q,
+            &keys.joint_elgamal_pubkey.pp.p,
         );
         let dec_key_alpha_tilde = BigInt::mod_pow(
             &party_two_third_message.c_alpha_tilde_random.c1,
             &keys.private.sk.x,
-            &keys.joint_elgamal_pubkey.pp.q,
+            &keys.joint_elgamal_pubkey.pp.p,
         );
         let dec_key_alpha_full = BigInt::mod_mul(
             &dec_key_alpha,
             &party_two_third_message.partial_dec_c_alpha,
-            &keys.joint_elgamal_pubkey.pp.q,
+            &keys.joint_elgamal_pubkey.pp.p,
         );
         let dec_key_alpha_tilde_full = BigInt::mod_mul(
             &dec_key_alpha_tilde,
             &party_two_third_message.partial_dec_c_alpha_tilde,
-            &keys.joint_elgamal_pubkey.pp.q,
+            &keys.joint_elgamal_pubkey.pp.p,
         );
 
         let dec_key_alpha_full_inv =
-            BigInt::mod_inv(&dec_key_alpha_full, &keys.joint_elgamal_pubkey.pp.q);
+            BigInt::mod_inv(&dec_key_alpha_full, &keys.joint_elgamal_pubkey.pp.p);
         let dec_key_alpha_tilde_full_inv =
-            BigInt::mod_inv(&dec_key_alpha_tilde_full, &keys.joint_elgamal_pubkey.pp.q);
+            BigInt::mod_inv(&dec_key_alpha_tilde_full, &keys.joint_elgamal_pubkey.pp.p);
 
         let test1 = BigInt::mod_mul(
             &party_two_third_message.c_alpha_random.c2,
             &dec_key_alpha_full_inv,
-            &keys.joint_elgamal_pubkey.pp.q,
+            &keys.joint_elgamal_pubkey.pp.p,
         );
         let test2 = BigInt::mod_mul(
             &party_two_third_message.c_alpha_tilde_random.c2,
             &dec_key_alpha_tilde_full_inv,
-            &keys.joint_elgamal_pubkey.pp.q,
+            &keys.joint_elgamal_pubkey.pp.p,
         );
 
         if test1 == BigInt::one() || test2 == BigInt::one() {
             Ok(false)
         } else {
             Ok(true)
+        }
+    }
+}
+
+impl PartyOneComputeProduct {
+    pub fn send_candidate_ciphertexts(
+        p: &mut PartyOneCandidateWitness,
+        q: &mut PartyOneCandidateWitness,
+        keys: &PartyOneKeySetup,
+    ) -> PartyOneComputeProductFirstMsg {
+        let r_p = BigInt::sample_below(&keys.local_paillier_pubkey.n);
+        let r_q = BigInt::sample_below(&keys.local_paillier_pubkey.n);
+        // we abuse existing PartyOneCandidateWitness to handle the paillier encryption randomness
+        p.r_0_paillier = r_p.clone();
+        q.r_0_paillier = r_q.clone();
+        let c_p = Paillier::encrypt_with_chosen_randomness(
+            &keys.local_paillier_pubkey,
+            RawPlaintext::from(p.p_0.clone()),
+            &Randomness(r_p.clone()),
+        )
+        .0
+        .into_owned();
+        let c_q = Paillier::encrypt_with_chosen_randomness(
+            &keys.local_paillier_pubkey,
+            RawPlaintext::from(q.p_0.clone()),
+            &Randomness(r_q.clone()),
+        )
+        .0
+        .into_owned();
+
+        let witness_c_p = CiphertextWitness {
+            x: p.p_0.clone(),
+            r: r_p,
+        };
+
+        let witness_c_q = CiphertextWitness {
+            x: q.p_0.clone(),
+            r: r_q,
+        };
+
+        let statement_c_p = CiphertextStatement {
+            ek: keys.local_paillier_pubkey.clone(),
+            c: c_p.clone(),
+        };
+
+        let statement_c_q = CiphertextStatement {
+            ek: keys.local_paillier_pubkey.clone(),
+            c: c_q.clone(),
+        };
+
+        let c_p_proof = CiphertextProof::prove(&witness_c_p, &statement_c_p).unwrap();
+        let c_q_proof = CiphertextProof::prove(&witness_c_q, &statement_c_q).unwrap();
+
+        PartyOneComputeProductFirstMsg {
+            c_p,
+            c_q,
+            c_p_proof,
+            c_q_proof,
+        }
+    }
+
+    pub fn verify_party_two_first_message_decrypt_compute_n(
+        party_one_first_message: &PartyOneComputeProductFirstMsg,
+        party_two_first_message: &PartyTwoComputeProductFirstMsg,
+        p: &PartyOneCandidateWitness,
+        q: &PartyOneCandidateWitness,
+        keys: &PartyOneKeySetup,
+    ) -> Result<PartyOneComputeProductSecondMsg, TwoPartyRSAError> {
+        let verlin_statement = VerlinStatement {
+            ek: keys.local_paillier_pubkey.clone(),
+            c: party_one_first_message.c_p.clone(),
+            c_prime: party_one_first_message.c_q.clone(),
+            phi_x: party_two_first_message.c_n_p0_q0.clone(),
+        };
+        if party_two_first_message
+            .pi_verlin
+            .verify(&verlin_statement)
+            .is_err()
+        {
+            return Err(TwoPartyRSAError::InvalidVerlinProof);
+        }
+
+        let (n_minus_p0_q0, r_n_minus_p0_q0) = Paillier::open(
+            &keys.private.dk,
+            RawCiphertext::from(party_two_first_message.c_n_p0_q0.clone()),
+        );
+        let p0q0 = &p.p_0 * &q.p_0;
+        let n_tilde: BigInt = &n_minus_p0_q0.0.into_owned() + &p0q0;
+        if n_tilde > keys.local_paillier_pubkey.n {
+            return Err(TwoPartyRSAError::GeneralError);
+        }
+        let r_pi = BigInt::sample_below(&keys.local_paillier_pubkey.n);
+        let c_pi = Paillier::encrypt_with_chosen_randomness(
+            &keys.local_paillier_pubkey,
+            RawPlaintext::from(p0q0.clone()),
+            &Randomness(r_pi.clone()),
+        )
+        .0
+        .into_owned();
+        let mult_witness = MulWitness {
+            a: p.p_0.clone(),
+            b: q.p_0.clone(),
+            c: p0q0.clone(),
+            r_a: p.r_0_paillier.clone(),
+            r_b: q.r_0_paillier.clone(),
+            r_c: r_pi.clone(),
+        };
+
+        let mult_statement = MulStatement {
+            ek: keys.local_paillier_pubkey.clone(),
+            e_a: party_one_first_message.c_p.clone(),
+            e_b: party_one_first_message.c_q.clone(),
+            e_c: c_pi.clone(),
+        };
+        let mul_proof = MulProof::prove(&mult_witness, &mult_statement).unwrap();
+
+        let r_n_tilde = BigInt::sample_below(&keys.local_paillier_pubkey.n);
+        let r_n_tilde_inv = r_n_tilde.invert(&keys.local_paillier_pubkey.nn).unwrap();
+        let c_n_tilde = Paillier::encrypt_with_chosen_randomness(
+            &keys.local_paillier_pubkey,
+            RawPlaintext::from(n_tilde.clone()),
+            &Randomness(r_n_tilde.clone()),
+        )
+        .0
+        .into_owned();
+        let c_n_tilde_inv = c_n_tilde.invert(&keys.local_paillier_pubkey.nn).unwrap();
+        let c_n_p0_q0_c_pi = Paillier::add(
+            &keys.local_paillier_pubkey,
+            RawCiphertext::from(&party_two_first_message.c_n_p0_q0.clone()),
+            RawCiphertext::from(c_pi.clone()),
+        );
+        let c_0 = Paillier::add(
+            &keys.local_paillier_pubkey,
+            c_n_p0_q0_c_pi,
+            RawCiphertext::from(c_n_tilde_inv.clone()),
+        )
+        .0
+        .into_owned();
+
+        let zero_witness = ZeroWitness {
+            r: BigInt::mod_mul(
+                &BigInt::mod_mul(&r_pi, &r_n_minus_p0_q0.0, &keys.local_paillier_pubkey.nn),
+                &r_n_tilde_inv,
+                &keys.local_paillier_pubkey.nn,
+            ),
+        };
+        let zero_statement = ZeroStatement {
+            ek: keys.local_paillier_pubkey.clone(),
+            c: c_0,
+        };
+
+        let zero_proof = ZeroProof::prove(&zero_witness, &zero_statement).unwrap();
+        return Ok(PartyOneComputeProductSecondMsg {
+            zero_proof,
+            mul_proof,
+            r_n_tilde,
+            n_tilde,
+            c_pi,
+        });
+    }
+
+    pub fn compute_p0q0_elgamal_ciphertext(
+        p: &PartyOneCandidateWitness,
+        q: &PartyOneCandidateWitness,
+        ciphertext_pair_p_candidate: &CiphertextPair,
+        ciphertext_pair_q_candidate: &CiphertextPair,
+        keys: &PartyOneKeySetup,
+    ) -> PartyOneElgamalProductFirstMsg {
+        // start of 3(b)
+        // in 3(b) P1 should send Enc_eg(p0q0) to P2 together with pi_mult
+        let p0q0 = BigInt::mod_mul(&p.p_0, &q.p_0, &keys.joint_elgamal_pubkey.pp.q);
+        let r_p0q0 = BigInt::sample_below(&keys.joint_elgamal_pubkey.pp.q);
+        let c_p0q0 = ExponentElGamal::encrypt_from_predefined_randomness(
+            &p0q0,
+            &keys.joint_elgamal_pubkey,
+            &r_p0q0,
+        )
+        .unwrap();
+        let mul_witness_eg = MulWitnessElGamal {
+            a: p.p_0.clone(),
+            b: q.p_0.clone(),
+            c: p0q0,
+            r_a: p.r_0.clone(),
+            r_b: q.r_0.clone(),
+            r_c: r_p0q0,
+        };
+
+        let mul_statement_eg = MulStatementElGamal {
+            pk: keys.joint_elgamal_pubkey.clone(),
+            e_a: ciphertext_pair_p_candidate.c0.clone(),
+            e_b: ciphertext_pair_q_candidate.c0.clone(),
+            e_c: c_p0q0.clone(),
+        };
+
+        let mul_proof_eg = MulProofElGamal::prove(&mul_witness_eg, &mul_statement_eg).unwrap();
+
+        PartyOneElgamalProductFirstMsg {
+            c_p0q0,
+            mul_proof_eg,
+        }
+    }
+
+    pub fn compute_elgamal_c_n_and_verify_biprime_correctness(
+        party_one_ep_first_message: &PartyOneElgamalProductFirstMsg,
+        party_two_ep_first_message: &PartyTwoElgamalProductFirstMsg,
+        ciphertext_pair_p_candidate: &CiphertextPair,
+        ciphertext_pair_q_candidate: &CiphertextPair,
+        bi_prime_n_tilde: &BigInt,
+        keys: &PartyOneKeySetup,
+    ) -> Result<PartyOneElgamalProductSecondMsg, TwoPartyRSAError> {
+        // verify party two mul proof and verlin proof
+        let mul_statement_eg = MulStatementElGamal {
+            pk: keys.joint_elgamal_pubkey.clone(),
+            e_a: ciphertext_pair_p_candidate.c1.clone(),
+            e_b: ciphertext_pair_q_candidate.c1.clone(),
+            e_c: party_two_ep_first_message.c_p1q1.clone(),
+        };
+        let verlin_statement_eg = VerlinStatementElGamal {
+            pk: keys.joint_elgamal_pubkey.clone(),
+            c: ciphertext_pair_p_candidate.c0.clone(),
+            c_prime: ciphertext_pair_q_candidate.c0.clone(),
+            phi_x: party_two_ep_first_message.c_p0q1_q0p1_p1q1.clone(),
+        };
+
+        let verlin_res = party_two_ep_first_message
+            .verlin_proof
+            .verify(&verlin_statement_eg);
+        let mul_res = party_two_ep_first_message
+            .mul_proof_eg
+            .verify(&mul_statement_eg);
+        match mul_res.is_ok() && verlin_res.is_ok() {
+            true => {
+                let c_n = ExponentElGamal::add(
+                    &party_two_ep_first_message.c_p0q1_q0p1_p1q1,
+                    &party_one_ep_first_message.c_p0q0,
+                )
+                .unwrap();
+
+                //verify ddh proof from party 2 decryption
+                let ddh_statement_to_verify = DDHStatement {
+                    pp: keys.joint_elgamal_pubkey.pp.clone(),
+                    g1: keys.joint_elgamal_pubkey.pp.g.clone(),
+                    h1: keys.remote_elgamal_pubkey.h.clone(),
+                    g2: c_n.c1.clone(),
+                    h2: party_two_ep_first_message.c_n_1_sk2.clone(),
+                };
+                if party_two_ep_first_message
+                    .ddh_proof
+                    .verify(&ddh_statement_to_verify)
+                    .is_err()
+                {
+                    return Err(TwoPartyRSAError::InvalidDecryption);
+                }
+
+                let c_n_1_sk1 =
+                    BigInt::mod_pow(&c_n.c1, &keys.private.sk.x, &keys.joint_elgamal_pubkey.pp.p);
+                let ddh_statement = DDHStatement {
+                    pp: keys.joint_elgamal_pubkey.pp.clone(),
+                    g1: keys.joint_elgamal_pubkey.pp.g.clone(),
+                    h1: keys.local_elgamal_pubkey.h.clone(),
+                    g2: c_n.c1.clone(),
+                    h2: c_n_1_sk1.clone(),
+                };
+
+                let ddh_witness = DDHWitness {
+                    x: keys.private.sk.x.clone(),
+                };
+                let ddh_proof = DDHProof::prove(&ddh_witness, &ddh_statement);
+
+                // full decryption + check that g^n = g^n
+                let key = BigInt::mod_mul(
+                    &c_n_1_sk1,
+                    &party_two_ep_first_message.c_n_1_sk2,
+                    &keys.joint_elgamal_pubkey.pp.p,
+                );
+                let key_inv = BigInt::mod_inv(&key, &keys.joint_elgamal_pubkey.pp.p);
+                let g_n = BigInt::mod_mul(&key_inv, &c_n.c2, &keys.joint_elgamal_pubkey.pp.p);
+                let g_n_tilde = BigInt::mod_pow(
+                    &keys.joint_elgamal_pubkey.pp.g,
+                    &bi_prime_n_tilde,
+                    &keys.joint_elgamal_pubkey.pp.p,
+                );
+                match g_n == g_n_tilde {
+                    true => Ok(PartyOneElgamalProductSecondMsg {
+                        c_n_1_sk1,
+                        ddh_proof,
+                    }),
+                    false => Err(TwoPartyRSAError::BiPrimesNotEqual),
+                }
+            }
+            false => Err(TwoPartyRSAError::InvalidElGamalMul),
         }
     }
 }
