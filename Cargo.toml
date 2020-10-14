@@ -31,6 +31,7 @@ elgamal = {git = "https://github.com/ZenGo-X/rust-elgamal"}
 rayon = "1.4.0"
 bit-vec = "0.6"
 rand = "0.6"
+itertools = "0.9.0"
 
 [dependencies.curv]
 git = "https://github.com/KZen-networks/curv"

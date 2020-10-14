@@ -35,3 +35,10 @@ pub enum ProofError {
     MulError,
     VerlinError,
 }
+
+#[derive(Copy, PartialEq, Eq, Clone, Debug)]
+pub enum BulletproofError {
+    SetupError,
+    InnerProductError,
+    BPRangeProofError,
+}
