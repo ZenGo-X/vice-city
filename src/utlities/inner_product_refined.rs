@@ -16,9 +16,10 @@ Copyright information here.
 use crate::BulletproofError::{self, InnerProductError};
 use elgamal::ElGamalPP;
 use curv::arithmetic::traits::Modulo;
-use curv::cryptographic_primitives::hashing::hash_sha256::HSha256;
-use curv::cryptographic_primitives::hashing::traits::*;
 use curv::BigInt;
+use crate::utlities::hash;
+
+const HASH_OUTPUT_BIT_SIZE: usize = 256;
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct IPProof {
@@ -110,8 +111,7 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt, ElGamalPP> for I
             let R = multiexponentiation(&points_R, &scalars_R, &pp, true);
             
             // generate challenge
-            let x = HSha256::create_hash(&[&L, &R, &u]);
-            let x = x.modulus(&order_f);
+            let x = hash(&[&L, &R, &u], &pp, HASH_OUTPUT_BIT_SIZE);
             let x_inv = BigInt::mod_inv(&x, &order_f);
 
             // push L, R
@@ -198,8 +198,7 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt, ElGamalPP> for I
             let (H_L, H_R) = H.split_at(n);
 
             // generate challenge
-            let x = HSha256::create_hash(&[&self.L[0], &self.R[0], &u]);
-            let x = x.modulus(&order_f);
+            let x = hash(&[&self.L[0], &self.R[0], &u], &pp, HASH_OUTPUT_BIT_SIZE);
             let x_inv = BigInt::mod_inv(&x, &order_f);
             let x_sq = BigInt::mod_mul(&x, &x, &order_f);
             let x_inv_sq = BigInt::mod_mul(&x_inv, &x_inv, &order_f);
@@ -288,8 +287,7 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt, ElGamalPP> for I
         let mut minus_x_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_n);
         let mut minus_x_inv_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_n);
         for (Li, Ri) in self.L.iter().zip(self.R.iter()) {
-            let x = HSha256::create_hash(&[&Li, &Ri, &u]);
-            let x = x.modulus(&order_f);
+            let x = hash(&[&Li, &Ri, &u], &pp, HASH_OUTPUT_BIT_SIZE);
             let x_sq = BigInt::mod_mul(&x, &x, &order_f);
             
             x_vec.push(x.clone());

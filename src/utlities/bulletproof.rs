@@ -22,6 +22,9 @@ use itertools::iterate;
 use curv::cryptographic_primitives::hashing::hash_sha256::HSha256;
 use curv::cryptographic_primitives::hashing::traits::*;
 use curv::BigInt;
+use crate::utlities::hash;
+
+const HASH_OUTPUT_BIT_SIZE: usize = 256;
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct RangeProof {
@@ -124,10 +127,9 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
         let S = multiexponentiation(&points, &scalars_S, &pp, true);
 
         // generate challenge y, z
-        let y = HSha256::create_hash(&[&A, &S, &BigInt::from(0)]);
-        let z = HSha256::create_hash(&[&A, &S, &BigInt::from(1)]);
-        let y = y.modulus(&q);
-        let z = z.modulus(&q);
+        let y = hash(&[&A, &S, &BigInt::from(0)], &pp, HASH_OUTPUT_BIT_SIZE);
+        let z = hash(&[&A, &S, &BigInt::from(1)], &pp, HASH_OUTPUT_BIT_SIZE);
+        
         let y_powers = (0..nm)
             .map(|i| {
                 BigInt::mod_pow(&y, &BigInt::from(i as u64), &q)
@@ -177,8 +179,7 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
         println!("T2 = {:?}", T2);
 
         // generate challenge x
-        let x = HSha256::create_hash(&[&A, &S, &T1, &T2]);
-        let x = x.modulus(&q);
+        let x = hash(&[&A, &S, &T1, &T2], &pp, HASH_OUTPUT_BIT_SIZE);
         let x_sq = BigInt::mod_mul(&x, &x, &q);
 
         // compute taux and miu
@@ -282,12 +283,9 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
         let one = BigInt::from(1);
 
         // regenerate challenges x, y, z
-        let y = HSha256::create_hash(&[&self.A, &self.S, &BigInt::from(0)]);
-        let z = HSha256::create_hash(&[&self.A, &self.S, &BigInt::from(1)]);
-        let x = HSha256::create_hash(&[&self.A, &self.S, &self.T1, &self.T2]);
-        let y = y.modulus(&q);
-        let x = x.modulus(&q);
-        let z = z.modulus(&q);
+        let y = hash(&[&self.A, &self.S, &BigInt::from(0)], &pp, HASH_OUTPUT_BIT_SIZE);
+        let z = hash(&[&self.A, &self.S, &BigInt::from(1)], &pp, HASH_OUTPUT_BIT_SIZE);
+        let x = hash(&[&self.A, &self.S, &self.T1, &self.T2], &pp, HASH_OUTPUT_BIT_SIZE); 
         let z_minus = BigInt::mod_sub(&q, &z, &q);
         let z_sq = BigInt::mod_mul(&z, &z, &q);
         let x_sq = BigInt::mod_mul(&x, &x, &q);
@@ -427,12 +425,9 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
         );
 
         // regenerate challenges x, y, z
-        let y = HSha256::create_hash(&[&self.A, &self.S, &BigInt::from(0)]);
-        let z = HSha256::create_hash(&[&self.A, &self.S, &BigInt::from(1)]);
-        let xx = HSha256::create_hash(&[&self.A, &self.S, &self.T1, &self.T2]);
-        let y = y.modulus(&q);
-        let xx = xx.modulus(&q);
-        let z = z.modulus(&q);
+        let y = hash(&[&self.A, &self.S, &BigInt::from(0)], &pp, HASH_OUTPUT_BIT_SIZE);
+        let z = hash(&[&self.A, &self.S, &BigInt::from(1)], &pp, HASH_OUTPUT_BIT_SIZE);
+        let xx = hash(&[&self.A, &self.S, &self.T1, &self.T2], &pp, HASH_OUTPUT_BIT_SIZE); 
         let y_inv = BigInt::mod_inv(&y, &q);
         // let z_minus = BigInt::mod_sub(&q, &z, &q);
         let z_sq = BigInt::mod_mul(&z, &z, &q);
@@ -500,9 +495,7 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
             .iter()
             .zip(self.inner_product_proof.R.iter())
         {
-            let x = HSha256::create_hash(&[&Li, &Ri, &u]);
-            let x = x.modulus(&q);
-            
+            let x = hash(&[&Li, &Ri, &u], &pp, HASH_OUTPUT_BIT_SIZE);        
             let x_sq = BigInt::mod_mul(&x, &x, &q);
             
             x_vec.push(x.clone());
