@@ -1,4 +1,5 @@
 use crate::utlities::hash;
+use crate::utlities::HASH_OUTPUT_BIT_SIZE;
 use crate::ProofError;
 use curv::arithmetic::traits::Modulo;
 use curv::arithmetic::traits::Samplable;
@@ -6,7 +7,6 @@ use curv::arithmetic::traits::ZeroizeBN;
 use curv::BigInt;
 use elgamal::ElGamalPP;
 
-const HASH_OUTPUT_BIT_SIZE: usize = 256;
 /// This is implementation of Schnorr's identification protocol for elliptic curve groups or a
 /// sigma protocol for Proof of knowledge of the discrete log of an Elliptic-curve point:
 /// C.P. Schnorr. Efficient Identification and Signatures for Smart Cards. In

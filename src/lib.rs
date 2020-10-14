@@ -16,6 +16,12 @@ pub enum TwoPartyRSAError {
     CandidateGenerationEncError,
     CandidateGenerationDecError,
     InvalidModProof,
+    InvalidEncProof,
+    InvalidVerlinProof,
+    InvalidPartyOneProduct,
+    InvalidElGamalMul,
+    BiPrimesNotEqual,
+    InvalidDecryption,
 }
 
 #[derive(Copy, PartialEq, Eq, Clone, Debug)]
@@ -26,4 +32,6 @@ pub enum ProofError {
     RangeProofError,
     ModProofError,
     DHProofError,
+    MulError,
+    VerlinError,
 }
