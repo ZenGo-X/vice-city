@@ -2,6 +2,7 @@ use curv::cryptographic_primitives::hashing::hash_sha256::HSha256;
 use curv::cryptographic_primitives::hashing::traits::Hash;
 use curv::BigInt;
 use elgamal::ElGamalPP;
+use curv::arithmetic::traits::Modulo;
 
 pub mod ddh_proof;
 pub mod dlog_proof;
@@ -218,3 +219,214 @@ pub static SMALL_PRIMES: [u32; 2048] = [
     17609, 17623, 17627, 17657, 17659, 17669, 17681, 17683, 17707, 17713, 17729,
     17737, 17747, 17749, 17761, 17783, 17789, 17791, 17807, 17827, 17837, 17839,
     17851, 17863 ];
+
+
+
+// copied from https://docs.rs/crate/quadratic/0.3.1/source/src/lib.rs
+// changed to support BigInt
+pub fn jacobi(a: &BigInt, n: &BigInt) -> Option<i8> {
+    let zero = BigInt::zero();
+    // jacobi symbol is only defined for odd positive moduli
+    if n.mod_floor(&BigInt::from(2)) == zero || n <= &BigInt::zero() {
+        return None;
+    }
+
+    // Raise a mod n, then start the unsigned algorithm
+    let mut acc = 1;
+    let mut num = a.mod_floor(&n);
+    let mut den = n.clone();
+    loop {
+        // reduce numerator
+        num = num.mod_floor(&den);
+        if num == zero {
+            return Some(0);
+        }
+
+        // extract factors of two from numerator
+        while num.mod_floor(&BigInt::from(2)) == zero {
+            acc *= two_over(&den);
+            num = num.div_floor(&BigInt::from(2));
+        }
+        // if numerator is 1 => this sub-symbol is 1
+        if num == BigInt::one() {
+            return Some(acc);
+        }
+        // shared factors => one sub-symbol is zero
+        if num.gcd(&den) > BigInt::one() {
+            return Some(0);
+        }
+        // num and den are now odd co-prime, use reciprocity law:
+        acc *= reciprocity(&num, &den);
+        let tmp = num;
+        num = den.clone();
+        den = tmp;
+    }
+}
+
+fn two_over(n: &BigInt) -> i8 {
+    let n_mod_8 = n.mod_floor(&BigInt::from(8));
+    if  n_mod_8 == BigInt::one()
+        || n_mod_8 == BigInt::from(7)
+    {
+        1
+    } else {
+        -1
+    }
+}
+
+fn reciprocity(num: &BigInt, den: &BigInt) -> i8 {
+    let three = BigInt::from(3);
+    let four = BigInt::from(4);
+    if num.mod_floor(&four) == three
+        && den.mod_floor(&four) == three
+    {
+        -1
+    } else {
+        1
+    }
+}
+
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub struct TN {
+    pub a: BigInt,
+    pub b: BigInt,
+}
+
+impl TN {
+
+    pub fn identity() -> Self{
+        TN{
+            a: BigInt::zero(),
+            b: BigInt::one(),
+        }
+    }
+    pub fn new(a: &BigInt, b: &BigInt, n: &BigInt) -> Result<Self, ()> {
+
+        match BigInt::gcd(a, n) == BigInt::one() &&
+            BigInt::gcd(b, n) == BigInt::one() &&
+            a != &BigInt::zero() &&
+            b != &BigInt::zero() &&
+            a.lt(n) &&
+            b.lt(n)
+
+            {
+            true => Ok(
+            TN {
+                a: a.clone(),
+                b: b.clone(),
+            }),
+            false => Err(())
+        }
+    }
+
+    // TODO: we need to make sure
+    // ax + b + cx +d  = (a+c)x + (b+d)
+    pub fn add(first: &TN, second: &TN, n: &BigInt) -> Self {
+        TN {
+            a: BigInt::mod_add(&first.a, &second.a, n),
+            b: BigInt::mod_add(&first.b, &second.b, n),
+        }
+    }
+
+
+
+    pub fn sub(first: &TN, second: &TN, n: &BigInt) -> Self {
+        TN {
+            a: BigInt::mod_sub(&first.a, &second.a, n),
+            b: BigInt::mod_sub(&first.b, &second.b, n),
+        }
+    }
+
+    // (ax+b)* (cx+d) = (ac)x^2 + (ad+bc)x + bd =
+    // (ad+bc)x + bd-ac mod (x^2 + 1)
+    // proof: ac x^2 + (ad+bc)x + bd = ac (x^2+1) + ...
+    pub fn mul(first: &TN, second: &TN, n: &BigInt) -> Self {
+        let ad = BigInt::mod_mul(&first.a , &second.b , n);
+        let bc = BigInt::mod_mul(&first.b , &second.a, n);
+
+        let bd = BigInt::mod_mul(&first.b , &second.b, n) ;
+        let ac = BigInt::mod_mul(&first.a , &second.a, n) ;
+
+        TN {
+            a: BigInt::mod_add(&ad, &bc, n),
+            b: BigInt::mod_sub(&bd, &ac,n),
+        }
+    }
+
+    // (ax+b) ^2=2abx + b^2-a^2 (proof: take mul with a=c, b=d)
+    pub fn square(first: &TN, n: &BigInt) -> Self {
+        let aa = BigInt::mod_mul(&first.a , &first.a, n) ;
+        let bb = BigInt::mod_mul(&first.b , &first.b, n);
+        let ab = BigInt::mod_mul(&first.a , &first.b, n) ;
+
+        TN {
+            a: BigInt::mod_mul(&ab, &BigInt::from(2), n),
+            b: BigInt::mod_sub(&bb, &aa,n),
+        }
+    }
+
+    //TODO: implement inverse
+
+
+    // exp by squaring
+    pub fn pow(first: &TN, second: &BigInt, n: &BigInt) -> Self {
+
+        assert!(second > &BigInt::zero()); // TODO: handle negative
+        let two = BigInt::from(2);
+        if second == &BigInt::zero() {
+            return TN {
+                a: BigInt::zero(),
+                b: BigInt::one(),
+            }
+        }
+        else if second == &BigInt::one() {return first.clone()}
+        else if second.modulus(&two) == BigInt::zero(){
+            let x_sq = TN::square(&first, n);
+            let second_half = second.div_floor(&two);
+            return TN::pow(&x_sq, &second_half, n);
+        }
+        else if second.modulus(&two) == BigInt::one(){
+            let x_sq = TN::square(&first, n);
+            let second_minus_one_half = (second - &BigInt::one()).div_floor(&two);
+            return TN::mul(&first, &TN::pow(&x_sq, &second_minus_one_half, n), n);
+        }
+        return first.clone();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::utlities::TN;
+    use curv::BigInt;
+    use elgamal::prime::is_prime;
+    use curv::arithmetic::traits::Samplable;
+
+    #[test]
+    fn test_pow_2048_bit(){
+
+        let four = BigInt::from(4);
+        let three = BigInt::from(3);
+
+        let bit_size = 1024;
+        let mut p = BigInt::sample(bit_size);
+        while !is_prime(&p) || BigInt::modulus(&p, &four)!= three {
+            p = p + BigInt::one()
+        }
+        let mut q = BigInt::sample(bit_size);
+        while !is_prime(&q) || BigInt::modulus(&q, &four)!= three {
+            q = q + BigInt::one()
+        }
+
+        let n = &p *&q;
+        let a = BigInt::sample_below(&n);
+        let b = BigInt::sample_below(&n);
+        let h = TN::new(&a, &b, &n).unwrap();
+
+        let x= &n + &p + &q + BigInt::one();
+        let h_pow_x = TN::pow(&h, &x, &n);
+
+        assert_eq!(h_pow_x.a,TN::identity().a);
+
+
+    }
+}

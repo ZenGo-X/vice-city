@@ -88,7 +88,7 @@ fn test_trial_division() {
     let party_two_ciphertext_pair = party_two_first_message_res.expect("");
 
     // pick alpha in B :
-    for i in 1..10 {
+    for i in 1..20 {
         let alpha = BigInt::from(SMALL_PRIMES[i]);
         println!("i: {:?}, alpha: {:?}", i.clone(), alpha.clone());
 
