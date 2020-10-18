@@ -13,16 +13,16 @@ Copyright information here.
 
 // use crate::protocols::bulletproofs::Field;
 // use crate::protocols::bulletproofs::Group;
-use crate::BulletproofError::{self, BPRangeProofError};
+use crate::utlities::hash;
 use crate::utlities::inner_product_refined::*;
-use elgamal::ElGamalPP;
+use crate::BulletproofError::{self, BPRangeProofError};
 use curv::arithmetic::traits::{Modulo, Samplable};
-use std::ops::{Shl, Shr};
-use itertools::iterate;
 use curv::cryptographic_primitives::hashing::hash_sha256::HSha256;
 use curv::cryptographic_primitives::hashing::traits::*;
 use curv::BigInt;
-use crate::utlities::hash;
+use elgamal::ElGamalPP;
+use itertools::iterate;
+use std::ops::{Shl, Shr};
 
 const HASH_OUTPUT_BIT_SIZE: usize = 256;
 
@@ -46,14 +46,14 @@ pub struct BPWitness {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct BPStatement {
-    pub g: BigInt,                   // \
-    pub h: BigInt,                   // |
-    pub u: BigInt,                   // |
-    pub g_vec: Vec<BigInt>,          //  > common reference string
-    pub h_vec: Vec<BigInt>,          // | 
-    pub params: ElGamalPP,           // |
-    pub num_bits: usize,             // /
-    pub commitments: Vec<BigInt>,    // pedersen commitments
+    pub g: BigInt,                // \
+    pub h: BigInt,                // |
+    pub u: BigInt,                // |
+    pub g_vec: Vec<BigInt>,       //  > common reference string
+    pub h_vec: Vec<BigInt>,       // |
+    pub params: ElGamalPP,        // |
+    pub num_bits: usize,          // /
+    pub commitments: Vec<BigInt>, // pedersen commitments
 }
 
 pub trait BPRangeProof<T, W, S, P> {
@@ -70,9 +70,8 @@ pub trait BPRangeProof<T, W, S, P> {
 
 impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof {
     fn prove(wit: &BPWitness, stmt: &BPStatement) -> RangeProof {
-
         RangeProof::validate_stmt_wit(&stmt, &wit);
-        
+
         let m = wit.a_vec.len();
         let n = stmt.num_bits;
         let nm = n * m;
@@ -89,9 +88,7 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
 
         // concat all secrets:
         secret.reverse();
-        let secret_agg = secret.iter().fold(BigInt::zero(), |acc, x| {
-            acc.shl(n) + x
-        });
+        let secret_agg = secret.iter().fold(BigInt::zero(), |acc, x| acc.shl(n) + x);
 
         let aL = (0..nm)
             .map(|i| {
@@ -117,8 +114,12 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
         let A = multiexponentiation(&points, &scalars_A, &pp, false);
 
         // compute S
-        let sL = (0..nm).map(|_| BigInt::sample_below(&q)).collect::<Vec<BigInt>>();
-        let sR = (0..nm).map(|_| BigInt::sample_below(&q)).collect::<Vec<BigInt>>();
+        let sL = (0..nm)
+            .map(|_| BigInt::sample_below(&q))
+            .collect::<Vec<BigInt>>();
+        let sR = (0..nm)
+            .map(|_| BigInt::sample_below(&q))
+            .collect::<Vec<BigInt>>();
         let rho = BigInt::sample_below(&q);
         let mut scalars_S = Vec::with_capacity(2 * nm + 1);
         scalars_S.push(rho.clone());
@@ -127,19 +128,15 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
         let S = multiexponentiation(&points, &scalars_S, &pp, true);
 
         // generate challenge y, z
-        let y = hash(&[&A, &S, &BigInt::from(0)], &pp, HASH_OUTPUT_BIT_SIZE);
-        let z = hash(&[&A, &S, &BigInt::from(1)], &pp, HASH_OUTPUT_BIT_SIZE);
-        
+        let y = hash(&[&A, &S, &BigInt::from(0)], &pp.q, HASH_OUTPUT_BIT_SIZE);
+        let z = hash(&[&A, &S, &BigInt::from(1)], &pp.q, HASH_OUTPUT_BIT_SIZE);
+
         let y_powers = (0..nm)
-            .map(|i| {
-                BigInt::mod_pow(&y, &BigInt::from(i as u64), &q)
-            })
+            .map(|i| BigInt::mod_pow(&y, &BigInt::from(i as u64), &q))
             .collect::<Vec<BigInt>>();
         let two_powers = (0..n)
-            .map(|i| {
-                BigInt::mod_pow(&two, &BigInt::from(i as u64), &q)
-            })
-            .collect::<Vec<BigInt>>();     
+            .map(|i| BigInt::mod_pow(&two, &BigInt::from(i as u64), &q))
+            .collect::<Vec<BigInt>>();
 
         // compute t2 such that t(X) = <l(X), r(X)> = t0 + t1.X + t2.X^2
         let t2 = (0..nm)
@@ -172,14 +169,24 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
         // compute T1, T2
         let tau1 = BigInt::sample_below(&q);
         let tau2 = BigInt::sample_below(&q);
-        let T1 = multiexponentiation(&[(*g).clone(), (*h).clone()], &[t1, tau1.clone()], &pp, true);
-        let T2 = multiexponentiation(&[(*g).clone(), (*h).clone()], &[t2, tau2.clone()], &pp, true);
+        let T1 = multiexponentiation(
+            &[(*g).clone(), (*h).clone()],
+            &[t1, tau1.clone()],
+            &pp,
+            true,
+        );
+        let T2 = multiexponentiation(
+            &[(*g).clone(), (*h).clone()],
+            &[t2, tau2.clone()],
+            &pp,
+            true,
+        );
 
         println!("T1 = {:?}", T1);
         println!("T2 = {:?}", T2);
 
         // generate challenge x
-        let x = hash(&[&A, &S, &T1, &T2], &pp, HASH_OUTPUT_BIT_SIZE);
+        let x = hash(&[&A, &S, &T1, &T2], &pp.q, HASH_OUTPUT_BIT_SIZE);
         let x_sq = BigInt::mod_mul(&x, &x, &q);
 
         // compute taux and miu
@@ -240,12 +247,9 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
             g_vec: g_vec.to_vec(),
             h_vec: hi_tag,
             params: pp,
-            P: P
+            P: P,
         };
-        let ip_wit = IPWitness {
-            a: Lp,
-            b: Rp,
-        };
+        let ip_wit = IPWitness { a: Lp, b: Rp };
 
         let lg_nm = ((std::mem::size_of_val(&nm) * 8) as usize) - (n.leading_zeros() as usize) - 1;
         let mut L_vec = Vec::with_capacity(lg_nm);
@@ -260,12 +264,11 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
             tau_x,
             miu,
             tx,
-            inner_product_proof
+            inner_product_proof,
         }
-    }   
+    }
 
     fn verify(&self, stmt: &BPStatement) -> Result<(), BulletproofError> {
-
         self.validate_proof(&stmt.params);
 
         let m = stmt.commitments.len();
@@ -283,27 +286,39 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
         let one = BigInt::from(1);
 
         // regenerate challenges x, y, z
-        let y = hash(&[&self.A, &self.S, &BigInt::from(0)], &pp, HASH_OUTPUT_BIT_SIZE);
-        let z = hash(&[&self.A, &self.S, &BigInt::from(1)], &pp, HASH_OUTPUT_BIT_SIZE);
-        let x = hash(&[&self.A, &self.S, &self.T1, &self.T2], &pp, HASH_OUTPUT_BIT_SIZE); 
+        let y = hash(
+            &[&self.A, &self.S, &BigInt::from(0)],
+            &pp.q,
+            HASH_OUTPUT_BIT_SIZE,
+        );
+        let z = hash(
+            &[&self.A, &self.S, &BigInt::from(1)],
+            &pp.q,
+            HASH_OUTPUT_BIT_SIZE,
+        );
+        let x = hash(
+            &[&self.A, &self.S, &self.T1, &self.T2],
+            &pp.q,
+            HASH_OUTPUT_BIT_SIZE,
+        );
         let z_minus = BigInt::mod_sub(&q, &z, &q);
         let z_sq = BigInt::mod_mul(&z, &z, &q);
         let x_sq = BigInt::mod_mul(&x, &x, &q);
 
         // compute delta(y, z)
         let y_powers = (0..nm)
-            .map(|i| {
-                BigInt::mod_pow(&y, &BigInt::from(i as u64), &q)
-            })
+            .map(|i| BigInt::mod_pow(&y, &BigInt::from(i as u64), &q))
             .collect::<Vec<BigInt>>();
-        let sum_y_powers = y_powers.iter().fold(BigInt::zero(), |acc, x| BigInt::mod_add(&acc, &x, &q));
+        let sum_y_powers = y_powers
+            .iter()
+            .fold(BigInt::zero(), |acc, x| BigInt::mod_add(&acc, &x, &q));
 
         let two_powers = (0..n)
-            .map(|i| {
-                BigInt::mod_pow(&two, &BigInt::from(i as u64), &q)
-            })
+            .map(|i| BigInt::mod_pow(&two, &BigInt::from(i as u64), &q))
             .collect::<Vec<BigInt>>();
-        let sum_two_powers = two_powers.iter().fold(BigInt::zero(), |acc, x| BigInt::mod_add(&acc, &x, &q));
+        let sum_two_powers = two_powers
+            .iter()
+            .fold(BigInt::zero(), |acc, x| BigInt::mod_add(&acc, &x, &q));
         let z_cubed_sum_two_powers = (0..m)
             .map(|i| {
                 let j = BigInt::mod_add(&BigInt::from(3), &BigInt::from(i as u64), &q);
@@ -323,7 +338,7 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
                 BigInt::mod_pow(&h_vec[i], &yi_inv, &p)
             })
             .collect::<Vec<BigInt>>();
-        
+
         // verification check (65)
         let tx_minus_delta = BigInt::mod_sub(&self.tx, &delta, &q);
         let g_tx_minus_delta = BigInt::mod_pow(&g, &tx_minus_delta, &p);
@@ -339,7 +354,9 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
                 BigInt::mod_pow(&stmt.commitments[i], &z_2_m, &p)
             })
             .collect::<Vec<BigInt>>();
-        let commitment_sum = commitments_zm.iter().fold(BigInt::one(), |acc, x| BigInt::mod_mul(&acc, &x, &p));
+        let commitment_sum = commitments_zm
+            .iter()
+            .fold(BigInt::one(), |acc, x| BigInt::mod_mul(&acc, &x, &p));
         let rhs = BigInt::mod_mul(&T1x_T2x_sq, &commitment_sum, &p);
 
         assert_eq!(lhs, rhs, "first check failed!");
@@ -356,11 +373,7 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
                 BigInt::mod_add(&z_yn, &z_j_2_n, &q)
             })
             .collect::<Vec<BigInt>>();
-        let scalars_g_vec = (0..nm)
-            .map(|_| {
-                z_minus.clone()
-            })
-            .collect::<Vec<BigInt>>();
+        let scalars_g_vec = (0..nm).map(|_| z_minus.clone()).collect::<Vec<BigInt>>();
 
         let mut scalars_P = Vec::with_capacity(2 * nm + 3);
         scalars_P.push(self.tx.clone());
@@ -384,7 +397,7 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
             g_vec: g_vec.to_vec(),
             h_vec: hi_tag,
             params: pp,
-            P: P
+            P: P,
         };
         let verify = self.inner_product_proof.verify(&ip_stmt);
 
@@ -396,7 +409,6 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
     }
 
     fn aggregated_verify(&self, stmt: &BPStatement) -> Result<(), BulletproofError> {
-
         self.validate_proof(&stmt.params);
 
         let m = stmt.commitments.len();
@@ -425,9 +437,21 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
         );
 
         // regenerate challenges x, y, z
-        let y = hash(&[&self.A, &self.S, &BigInt::from(0)], &pp, HASH_OUTPUT_BIT_SIZE);
-        let z = hash(&[&self.A, &self.S, &BigInt::from(1)], &pp, HASH_OUTPUT_BIT_SIZE);
-        let xx = hash(&[&self.A, &self.S, &self.T1, &self.T2], &pp, HASH_OUTPUT_BIT_SIZE); 
+        let y = hash(
+            &[&self.A, &self.S, &BigInt::from(0)],
+            &pp.q,
+            HASH_OUTPUT_BIT_SIZE,
+        );
+        let z = hash(
+            &[&self.A, &self.S, &BigInt::from(1)],
+            &pp.q,
+            HASH_OUTPUT_BIT_SIZE,
+        );
+        let xx = hash(
+            &[&self.A, &self.S, &self.T1, &self.T2],
+            &pp.q,
+            HASH_OUTPUT_BIT_SIZE,
+        );
         let y_inv = BigInt::mod_inv(&y, &q);
         // let z_minus = BigInt::mod_sub(&q, &z, &q);
         let z_sq = BigInt::mod_mul(&z, &z, &q);
@@ -495,9 +519,9 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
             .iter()
             .zip(self.inner_product_proof.R.iter())
         {
-            let x = hash(&[&Li, &Ri, &u], &pp, HASH_OUTPUT_BIT_SIZE);        
+            let x = hash(&[&Li, &Ri, &u], &pp.q, HASH_OUTPUT_BIT_SIZE);
             let x_sq = BigInt::mod_mul(&x, &x, &q);
-            
+
             x_vec.push(x.clone());
             x_sq_vec.push(x_sq.clone());
             minus_x_sq_vec.push(BigInt::mod_sub(&BigInt::zero(), &x_sq, &q));
@@ -532,7 +556,7 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
                 BigInt::mod_mul(&s_inv_i, &self.inner_product_proof.b_tag, &q)
             })
             .collect();
-        
+
         // exponent of g_vec
         let scalar_g_vec: Vec<BigInt> = (0..nm)
             .map(|i| BigInt::mod_add(&a_times_s[i], &z, &q))
@@ -621,7 +645,6 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
     }
 
     fn validate_stmt_wit(stmt: &BPStatement, wit: &BPWitness) {
-
         let mut points = Vec::new();
         points.push(stmt.g.clone());
         points.push(stmt.h.clone());
@@ -635,11 +658,9 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
         scalars.extend_from_slice(&wit.a_vec);
         scalars.extend_from_slice(&wit.gamma_vec);
         validate_scalar(&scalars, "wit", &stmt.params);
-
     }
 
     fn validate_proof(&self, pp: &ElGamalPP) {
-
         let mut points = Vec::new();
         points.push(self.A.clone());
         points.push(self.S.clone());
@@ -706,7 +727,9 @@ pub mod tests {
             v_vec[m - 1] = bad_v;
         }
 
-        let r_vec = (0..m).map(|_| BigInt::sample_below(&params.q)).collect::<Vec<BigInt>>();
+        let r_vec = (0..m)
+            .map(|_| BigInt::sample_below(&params.q))
+            .collect::<Vec<BigInt>>();
 
         // compute pedersen commitments
         let ped_com_vec = (0..m)
@@ -737,10 +760,9 @@ pub mod tests {
         let mut _verify;
         if aggregated {
             _verify = range_proof.aggregated_verify(&stmt);
-        }
-        else {
+        } else {
             _verify = range_proof.verify(&stmt);
-        } 
+        }
         assert!(_verify.is_ok());
     }
 
@@ -776,4 +798,3 @@ pub mod tests {
         test_helper(64, 16, true, false)
     }
 }
-

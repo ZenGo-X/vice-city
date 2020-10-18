@@ -73,7 +73,7 @@ impl MulProofElGamal {
                 &e_d.c1,
                 &e_db.c1,
             ],
-            &statement.pk.pp,
+            &statement.pk.pp.q,
             HASH_OUTPUT_BIT_SIZE,
         );
 
@@ -105,7 +105,7 @@ impl MulProofElGamal {
                 &self.e_d.c1,
                 &self.e_db.c1,
             ],
-            &statement.pk.pp,
+            &statement.pk.pp.q,
             HASH_OUTPUT_BIT_SIZE,
         );
 

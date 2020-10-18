@@ -22,6 +22,7 @@ pub enum TwoPartyRSAError {
     InvalidElGamalMul,
     BiPrimesNotEqual,
     InvalidDecryption,
+    BiPrimalityTestError,
 }
 
 #[derive(Copy, PartialEq, Eq, Clone, Debug)]

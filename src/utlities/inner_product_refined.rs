@@ -13,11 +13,11 @@ Copyright information here.
 
 // use crate::protocols::bulletproofs::Field;
 // use crate::protocols::bulletproofs::Group;
+use crate::utlities::hash;
 use crate::BulletproofError::{self, InnerProductError};
-use elgamal::ElGamalPP;
 use curv::arithmetic::traits::Modulo;
 use curv::BigInt;
-use crate::utlities::hash;
+use elgamal::ElGamalPP;
 
 const HASH_OUTPUT_BIT_SIZE: usize = 256;
 
@@ -31,11 +31,11 @@ pub struct IPProof {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct IPStatement {
-    pub u: BigInt,                     // \
-    pub g_vec: Vec<BigInt>,            // |
-    pub h_vec: Vec<BigInt>,            //  > common reference string
-    pub params: ElGamalPP,             // |
-    pub P: BigInt,                     // pedersen commitment
+    pub u: BigInt,          // \
+    pub g_vec: Vec<BigInt>, // |
+    pub h_vec: Vec<BigInt>, //  > common reference string
+    pub params: ElGamalPP,  // |
+    pub P: BigInt,          // pedersen commitment
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -57,8 +57,12 @@ pub trait InnerProductProof<T, W, S, B, P> {
 }
 
 impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt, ElGamalPP> for IPProof {
-    fn prove(wit: &IPWitness, stmt: &IPStatement, L_vec: &mut Vec<BigInt>, R_vec: &mut Vec<BigInt>) -> IPProof {
-
+    fn prove(
+        wit: &IPWitness,
+        stmt: &IPStatement,
+        L_vec: &mut Vec<BigInt>,
+        R_vec: &mut Vec<BigInt>,
+    ) -> IPProof {
         IPProof::validate_stmt_wit(stmt, wit);
 
         let G = &stmt.g_vec;
@@ -98,7 +102,7 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt, ElGamalPP> for I
             points_L.extend_from_slice(&G_R);
             points_L.extend_from_slice(&H_L);
             let L = multiexponentiation(&points_L, &scalars_L, &pp, true);
-            
+
             // compute R
             let mut scalars_R: Vec<BigInt> = Vec::with_capacity(2 * n + 1);
             scalars_R.push(c_R);
@@ -109,9 +113,9 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt, ElGamalPP> for I
             points_R.extend_from_slice(&G_L);
             points_R.extend_from_slice(&H_R);
             let R = multiexponentiation(&points_R, &scalars_R, &pp, true);
-            
+
             // generate challenge
-            let x = hash(&[&L, &R, &u], &pp, HASH_OUTPUT_BIT_SIZE);
+            let x = hash(&[&L, &R, &u], &pp.q, HASH_OUTPUT_BIT_SIZE);
             let x_inv = BigInt::mod_inv(&x, &order_f);
 
             // push L, R
@@ -152,17 +156,14 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt, ElGamalPP> for I
                 })
                 .collect::<Vec<BigInt>>();
 
-            let stmt_new = IPStatement{
-                u: u.clone(), 
-                g_vec: G_new, 
-                h_vec: H_new, 
-                params: pp, 
-                P: P.clone()
+            let stmt_new = IPStatement {
+                u: u.clone(),
+                g_vec: G_new,
+                h_vec: H_new,
+                params: pp,
+                P: P.clone(),
             };
-            let wit_new = IPWitness {
-                a: a_new, 
-                b: b_new
-            };
+            let wit_new = IPWitness { a: a_new, b: b_new };
 
             return IPProof::prove(&wit_new, &stmt_new, L_vec, R_vec);
         }
@@ -176,7 +177,6 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt, ElGamalPP> for I
     }
 
     fn verify(&self, stmt: &IPStatement) -> Result<(), BulletproofError> {
-        
         IPProof::validate_proof(self, &stmt.params);
 
         let G = &stmt.g_vec;
@@ -198,7 +198,7 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt, ElGamalPP> for I
             let (H_L, H_R) = H.split_at(n);
 
             // generate challenge
-            let x = hash(&[&self.L[0], &self.R[0], &u], &pp, HASH_OUTPUT_BIT_SIZE);
+            let x = hash(&[&self.L[0], &self.R[0], &u], &pp.q, HASH_OUTPUT_BIT_SIZE);
             let x_inv = BigInt::mod_inv(&x, &order_f);
             let x_sq = BigInt::mod_mul(&x, &x, &order_f);
             let x_inv_sq = BigInt::mod_mul(&x_inv, &x_inv, &order_f);
@@ -238,7 +238,7 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt, ElGamalPP> for I
                 g_vec: G_new,
                 h_vec: H_new,
                 params: pp,
-                P: P_new
+                P: P_new,
             };
             return ip.verify(&stmt_new);
         }
@@ -255,11 +255,10 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt, ElGamalPP> for I
             Ok(())
         } else {
             Err(InnerProductError)
-        }     
+        }
     }
 
     fn fast_verify(&self, stmt: &IPStatement) -> Result<(), BulletproofError> {
-
         IPProof::validate_proof(self, &stmt.params);
 
         let G = &stmt.g_vec;
@@ -287,9 +286,9 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt, ElGamalPP> for I
         let mut minus_x_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_n);
         let mut minus_x_inv_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_n);
         for (Li, Ri) in self.L.iter().zip(self.R.iter()) {
-            let x = hash(&[&Li, &Ri, &u], &pp, HASH_OUTPUT_BIT_SIZE);
+            let x = hash(&[&Li, &Ri, &u], &pp.q, HASH_OUTPUT_BIT_SIZE);
             let x_sq = BigInt::mod_mul(&x, &x, &order_f);
-            
+
             x_vec.push(x.clone());
             x_sq_vec.push(x_sq.clone());
             minus_x_sq_vec.push(BigInt::mod_sub(&BigInt::zero(), &x_sq, &order_f));
@@ -367,15 +366,11 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt, ElGamalPP> for I
     }
 }
 
-
 pub fn validate_scalar(input: &[BigInt], tag: &str, pp: &ElGamalPP) {
     let k = input.len();
     for i in 0..k {
         let message = format!("Element {}[{}] is invalid!", tag, i);
-        assert!(
-            input[i] < pp.q, 
-            message
-        );
+        assert!(input[i] < pp.q, message);
     }
 }
 
@@ -386,7 +381,9 @@ pub fn validate_in_subgroup(input: &[BigInt], tag: &str, pp: &ElGamalPP) {
         assert_eq!(
             check_power,
             BigInt::one(),
-            "Element {}[{}] is invalid!", tag, i
+            "Element {}[{}] is invalid!",
+            tag,
+            i
         );
     }
 }
@@ -399,7 +396,7 @@ pub fn scalar_inner_product(a: &[BigInt], b: &[BigInt], pp: &ElGamalPP, in_group
     );
 
     let order = pp.q.clone();
-    
+
     if !in_group {
         validate_scalar(&a, "a", &pp);
         validate_scalar(&b, "b", &pp);
@@ -413,7 +410,12 @@ pub fn scalar_inner_product(a: &[BigInt], b: &[BigInt], pp: &ElGamalPP, in_group
     return out;
 }
 
-pub fn multiexponentiation(points: &[BigInt], scalars: &[BigInt], pp: &ElGamalPP, in_group: bool) -> BigInt {
+pub fn multiexponentiation(
+    points: &[BigInt],
+    scalars: &[BigInt],
+    pp: &ElGamalPP,
+    in_group: bool,
+) -> BigInt {
     assert_eq!(
         scalars.len(),
         points.len(),
@@ -450,10 +452,10 @@ pub fn batch_invert(scalars: &mut Vec<BigInt>, pp: &ElGamalPP, in_group: bool) -
     let mut prefix_prod = Vec::with_capacity(n);
     prefix_prod.push(scalars[0].clone());
     for i in 1..n {
-        prefix_prod.push(BigInt::mod_mul(&prefix_prod[i-1], &scalars[i], &order));
+        prefix_prod.push(BigInt::mod_mul(&prefix_prod[i - 1], &scalars[i], &order));
     }
 
-    let allinv = BigInt::mod_inv(&prefix_prod[n-1], &order);
+    let allinv = BigInt::mod_inv(&prefix_prod[n - 1], &order);
     prefix_prod[n - 1] = allinv.clone();
 
     for i in 1..n {
@@ -465,7 +467,6 @@ pub fn batch_invert(scalars: &mut Vec<BigInt>, pp: &ElGamalPP, in_group: bool) -
     scalars[0] = prefix_prod[0].clone();
 
     return allinv;
-
 }
 
 #[cfg(test)]
@@ -501,15 +502,11 @@ mod tests {
         let u = BigInt::mod_pow(&r, &BigInt::from(2), &params.p);
 
         let a_vec = (0..n)
-            .map(|_| {
-                BigInt::sample_below(&params.q)
-            })
+            .map(|_| BigInt::sample_below(&params.q))
             .collect::<Vec<BigInt>>();
 
         let b_vec = (0..n)
-            .map(|_| {
-                BigInt::sample_below(&params.q)
-            })
+            .map(|_| BigInt::sample_below(&params.q))
             .collect::<Vec<BigInt>>();
 
         let c = scalar_inner_product(&a_vec, &b_vec, &params, true);
@@ -524,12 +521,9 @@ mod tests {
             g_vec,
             h_vec,
             params,
-            P
+            P,
         };
-        let wit = IPWitness {
-            a: a_vec,
-            b: b_vec,
-        };
+        let wit = IPWitness { a: a_vec, b: b_vec };
 
         let lg_n = ((std::mem::size_of_val(&n) * 8) as usize) - (n.leading_zeros() as usize) - 1;
         let mut L_vec = Vec::with_capacity(lg_n);
@@ -539,8 +533,7 @@ mod tests {
         let mut _ip_verify;
         if unrolled {
             _ip_verify = ipp.fast_verify(&stmt);
-        }
-        else {
+        } else {
             _ip_verify = ipp.verify(&stmt);
         }
         assert!(_ip_verify.is_ok())
@@ -569,14 +562,17 @@ mod tests {
         a.push(BigInt::from(5));
         a.push(BigInt::from(17));
         a.push(BigInt::from(13));
-        
+
         b.push(BigInt::from(19));
         b.push(BigInt::from(3));
         b.push(BigInt::from(6));
         b.push(BigInt::from(12));
         b.push(BigInt::from(7));
 
-        assert_eq!(BigInt::from(502), super::scalar_inner_product(&a, &b, &params, false));
+        assert_eq!(
+            BigInt::from(502),
+            super::scalar_inner_product(&a, &b, &params, false)
+        );
     }
 
     #[test]
@@ -606,9 +602,7 @@ mod tests {
         let n = 64;
         let mut scalars: Vec<BigInt> = (0..n).map(|_| BigInt::sample_below(&order)).collect();
         let expected: Vec<BigInt> = (0..n)
-            .map(|i| {
-                BigInt::mod_inv(&scalars[i], &order)
-            })
+            .map(|i| BigInt::mod_inv(&scalars[i], &order))
             .collect();
         let _allinv = batch_invert(&mut scalars, &params, true);
         assert_eq!(expected, scalars);

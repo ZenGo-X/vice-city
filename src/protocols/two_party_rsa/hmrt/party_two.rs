@@ -1,4 +1,6 @@
+use crate::protocols::two_party_rsa::hmrt::compute_randomness_for_biprimality_test;
 use crate::protocols::two_party_rsa::hmrt::gen_ddh_containers;
+use crate::protocols::two_party_rsa::hmrt::party_one::PartyOneBiPrimalityTest;
 use crate::protocols::two_party_rsa::hmrt::party_one::PartyOneCandidateGenerationFirstMsg;
 use crate::protocols::two_party_rsa::hmrt::party_one::PartyOneCandidateGenerationSecondMsg;
 use crate::protocols::two_party_rsa::hmrt::party_one::PartyOneCandidateGenerationThirdMsg;
@@ -21,6 +23,12 @@ use crate::utlities::dlog_proof::Witness as DLogWitness;
 use crate::utlities::elgamal_enc_proof::HomoELGamalProof;
 use crate::utlities::elgamal_enc_proof::HomoElGamalStatement;
 use crate::utlities::elgamal_enc_proof::HomoElGamalWitness;
+use crate::utlities::equal_secret_proof::EqProof;
+use crate::utlities::equal_secret_proof::EqStatement;
+use crate::utlities::equal_secret_proof::EqWitness;
+use crate::utlities::equal_secret_proof_tn::EqProofTN;
+use crate::utlities::equal_secret_proof_tn::EqStatementTN;
+use crate::utlities::equal_secret_proof_tn::EqWitnessTN;
 use crate::utlities::mod_proof::ModProof;
 use crate::utlities::mod_proof::ModStatement;
 use crate::utlities::mod_proof::ModWitness;
@@ -33,6 +41,7 @@ use crate::utlities::range_proof::Witness as BoundWitness;
 use crate::utlities::verlin_proof::VerlinProofElGamal;
 use crate::utlities::verlin_proof::VerlinStatementElGamal;
 use crate::utlities::verlin_proof::VerlinWitnessElGamal;
+use crate::utlities::TN;
 use crate::TwoPartyRSAError;
 use curv::arithmetic::traits::Modulo;
 use curv::arithmetic::traits::Samplable;
@@ -135,6 +144,14 @@ pub struct PartyTwoElgamalProductFirstMsg {
     pub verlin_proof: VerlinProofElGamal,
     pub c_n_1_sk2: BigInt,
     pub ddh_proof: DDHProof,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PartyTwoBiPrimalityTest {
+    pub gamma_1: BigInt,
+    pub u2: TN,
+    pub eq_proof: EqProof,
+    pub eq_proof_tn: EqProofTN,
 }
 
 impl PartyTwoKeySetup {
@@ -252,6 +269,58 @@ impl PartyTwoCandidateGeneration {
             },
         )
     }
+
+    pub fn generate_shares_of_candidate_inject_test(
+        keys: &PartyTwoKeySetup,
+        prime_share: BigInt,
+    ) -> (
+        PartyTwoCandidateWitness,
+        PartyTwoCandidateGenerationFirstMsg,
+    ) {
+        let p_i = prime_share;
+        let r_i = BigInt::sample_below(&keys.joint_elgamal_pubkey.pp.q);
+
+        let c_i = ExponentElGamal::encrypt_from_predefined_randomness(
+            &p_i,
+            &keys.joint_elgamal_pubkey,
+            &r_i,
+        )
+        .unwrap();
+        let enc_witness = HomoElGamalWitness {
+            r: r_i.clone(),
+            m: p_i.clone(),
+        };
+        let enc_statement = HomoElGamalStatement {
+            pk: keys.joint_elgamal_pubkey.clone(),
+            ciphertext: c_i.clone(),
+        };
+        let bound_witness = BoundWitness {
+            x: p_i.clone(),
+            r: r_i.clone(),
+        };
+        let bound_statement = BoundStatement {
+            pk: keys.joint_elgamal_pubkey.clone(),
+            // TODO: in current range proof this will give some slack such that it is possible that
+            // a prover chose 2^(N/2-2)<x< 1/3 * 2^(N/2).
+            range: BigInt::from(2).pow((CANDIDATE_BIT_LENGTH / 2) as u32),
+            ciphertext: c_i.clone(),
+            sec_param: 120, //TODO : parameterize
+            kapa: 100,      //TODO : parameterize
+        };
+
+        let enc_proof = HomoELGamalProof::prove(&enc_witness, &enc_statement);
+        let bound_proof = RangeProof::prove(&bound_witness, &bound_statement).unwrap(); // TODO: handle error properly
+
+        (
+            PartyTwoCandidateWitness { p_1: p_i, r_1: r_i },
+            PartyTwoCandidateGenerationFirstMsg {
+                c_i,
+                pi_enc: enc_proof,
+                pi_bound: bound_proof,
+            },
+        )
+    }
+
     pub fn verify_party_one_first_message_and_normalize_ciphertexts(
         keys: &PartyTwoKeySetup,
         party_one_first_message: &PartyOneCandidateGenerationFirstMsg,
@@ -836,6 +905,174 @@ impl PartyTwoComputeProduct {
                 }
             }
             Err(_) => Err(TwoPartyRSAError::InvalidDecryption),
+        }
+    }
+}
+
+// TODO: zeroize
+
+impl PartyTwoBiPrimalityTest {
+    // This function generates joint pubic randomness for gamma and h = ax + b (in TN).
+    // We do this by hashing the candidate N together with the joint elgamal key and a seed
+    // We next non interactively compute gamma_0 and u_0 (see [BF01]) together with pi_eq
+    pub fn compute(
+        n: &BigInt,
+        p: &PartyTwoCandidateWitness,
+        q: &PartyTwoCandidateWitness,
+        ciphertext_pair_p_candidate: &CiphertextPair,
+        ciphertext_pair_q_candidate: &CiphertextPair,
+        keys: &PartyTwoKeySetup,
+        seed: &BigInt,
+    ) -> Self {
+        let four = BigInt::from(4);
+        let (gamma, h) =
+            compute_randomness_for_biprimality_test(&n, &keys.joint_elgamal_pubkey.h, &seed);
+
+        //compute e0:
+        let c_p1_plus_q1 = ExponentElGamal::add(
+            &ciphertext_pair_p_candidate.c1,
+            &ciphertext_pair_q_candidate.c1,
+        )
+        .unwrap();
+        let c_minus_p1_plus_q1 = ExponentElGamal::mul(&c_p1_plus_q1, &(-BigInt::one()));
+
+        let four_inv = four.invert(&keys.joint_elgamal_pubkey.pp.q).unwrap();
+        let e_1 = ExponentElGamal::mul(&c_minus_p1_plus_q1, &four_inv);
+
+        let r_e_1: BigInt = BigInt::mod_mul(
+            &BigInt::mod_sub(
+                &BigInt::zero(),
+                &(&p.r_1 + &q.r_1),
+                &keys.joint_elgamal_pubkey.pp.q,
+            ),
+            &four_inv,
+            &keys.joint_elgamal_pubkey.pp.q,
+        );
+        let minus_p1_plus_q1_div_four: BigInt = (-(&p.p_1 + &q.p_1)).div_floor(&four);
+        let gamma_1 = BigInt::mod_pow(&gamma, &minus_p1_plus_q1_div_four, n);
+
+        let p1_plus_q1: BigInt = &p.p_1 + &q.p_1;
+        let u2 = TN::pow(&h, &p1_plus_q1, n);
+
+        let gamma_eq_witness = EqWitness {
+            x: minus_p1_plus_q1_div_four.clone(),
+            r: r_e_1.clone(),
+        };
+
+        let gamma_eq_statement = EqStatement {
+            pk: keys.joint_elgamal_pubkey.clone(),
+            h: gamma.clone(),
+            h_prime: gamma_1.clone(),
+            n: n.clone(),
+            ciphertext: e_1,
+            sec_param: 120,
+            kapa: 100,
+        };
+
+        let eq_proof = EqProof::prove(&gamma_eq_statement, &gamma_eq_witness).unwrap();
+
+        // repeat the proof but for u1:
+        let r_q0_plus_p0: BigInt = &p.r_1 + &q.r_1;
+
+        let h_eq_witness_tn = EqWitnessTN {
+            x: p1_plus_q1,
+            r: r_q0_plus_p0,
+        };
+
+        let h_eq_statement_tn = EqStatementTN {
+            pk: keys.joint_elgamal_pubkey.clone(),
+            h: h.clone(),
+            h_prime: u2.clone(),
+            n: n.clone(),
+            ciphertext: c_p1_plus_q1,
+            sec_param: 120,
+            kapa: 100,
+        };
+
+        let eq_proof_tn = EqProofTN::prove(&h_eq_statement_tn, &h_eq_witness_tn).unwrap();
+
+        return PartyTwoBiPrimalityTest {
+            gamma_1,
+            u2,
+            eq_proof,
+            eq_proof_tn,
+        };
+    }
+
+    pub fn verify(
+        &self,
+        n: &BigInt,
+        ciphertext_pair_p_candidate: &CiphertextPair,
+        ciphertext_pair_q_candidate: &CiphertextPair,
+        party_one_biprime_test: &PartyOneBiPrimalityTest,
+        seed: &BigInt,
+        keys: &PartyTwoKeySetup,
+    ) -> Result<bool, TwoPartyRSAError> {
+        let (gamma, h) =
+            compute_randomness_for_biprimality_test(&n, &keys.joint_elgamal_pubkey.h, &seed);
+        let four = BigInt::from(4);
+
+        let c_p0_plus_q0 = ExponentElGamal::add(
+            &ciphertext_pair_p_candidate.c0,
+            &ciphertext_pair_q_candidate.c0,
+        )
+        .unwrap();
+        let c_minus_p0_plus_q0 = ExponentElGamal::mul(&c_p0_plus_q0, &(-BigInt::one()));
+        let c_n_plus_one = ExponentElGamal::encrypt_from_predefined_randomness(
+            &(n + BigInt::one()).modulus(&keys.joint_elgamal_pubkey.pp.q),
+            &keys.joint_elgamal_pubkey,
+            &BigInt::from(2),
+        )
+        .unwrap();
+        let c_n_minus_p0_plus_q0_plus_one =
+            ExponentElGamal::add(&c_n_plus_one, &c_minus_p0_plus_q0).unwrap();
+        let four_inv = four.invert(&keys.joint_elgamal_pubkey.pp.q).unwrap();
+        let e_0 = ExponentElGamal::mul(&c_n_minus_p0_plus_q0_plus_one, &four_inv);
+
+        let gamma_eq_statement = EqStatement {
+            pk: keys.joint_elgamal_pubkey.clone(),
+            h: gamma.clone(),
+            h_prime: party_one_biprime_test.gamma_0.clone(),
+            n: n.clone(),
+            ciphertext: e_0,
+            sec_param: 120,
+            kapa: 100,
+        };
+
+        let c_n_plus_p0_plus_q0_plus_1 =
+            ExponentElGamal::add(&c_n_plus_one, &c_p0_plus_q0).unwrap();
+        let h_eq_statement_tn = EqStatementTN {
+            pk: keys.joint_elgamal_pubkey.clone(),
+            h: h.clone(),
+            h_prime: party_one_biprime_test.u1.clone(),
+            n: n.clone(),
+            ciphertext: c_n_plus_p0_plus_q0_plus_1,
+            sec_param: 120,
+            kapa: 100,
+        };
+
+        match party_one_biprime_test
+            .eq_proof
+            .verify(&gamma_eq_statement)
+            .is_ok()
+            && party_one_biprime_test
+                .eq_proof_tn
+                .verify(&h_eq_statement_tn)
+                .is_ok()
+        {
+            true => {
+                let gamma_test = BigInt::mod_mul(&self.gamma_1, &party_one_biprime_test.gamma_0, n);
+
+                let h_test = TN::mul(&self.u2, &party_one_biprime_test.u1, n);
+                if (gamma_test == BigInt::one() || gamma_test == (n - BigInt::one()))
+                    && h_test.a == BigInt::zero()
+                {
+                    return Ok(true);
+                } else {
+                    return Ok(false);
+                }
+            }
+            false => return Err(TwoPartyRSAError::BiPrimalityTestError),
         }
     }
 }

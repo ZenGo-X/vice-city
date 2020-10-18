@@ -44,7 +44,7 @@ impl ProveDLog for DLogProof {
         let mut r: BigInt = BigInt::sample_below(&pp.q);
         let random_point = BigInt::mod_pow(&pp.g, &r, &pp.p);
         let pk = BigInt::mod_pow(&pp.g, &w.x, &pp.p);
-        let e = hash(&[&random_point, &pk, &pp.g], &pp, HASH_OUTPUT_BIT_SIZE);
+        let e = hash(&[&random_point, &pk, &pp.g], &pp.q, HASH_OUTPUT_BIT_SIZE);
         let response = &r + &(e * &w.x);
         r.zeroize_bn();
         DLogProof {
@@ -56,7 +56,7 @@ impl ProveDLog for DLogProof {
     fn verify(&self, statement: &Statement, pp: &ElGamalPP) -> Result<(), ProofError> {
         let e = hash(
             &[&self.random_point, &statement.h, &pp.g],
-            &pp,
+            &pp.q,
             HASH_OUTPUT_BIT_SIZE,
         );
 
@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn test_hash() {
         let pp = ElGamalPP::generate_from_rfc7919(SupportedGroups::FFDHE2048);
-        let res = hash(&[&BigInt::from(1)], &pp, 256);
+        let res = hash(&[&BigInt::from(1)], &pp.q, 256);
         assert!(
             (res.bit_length() - pp.q.bit_length()) < 10
                 || (pp.q.bit_length() - res.bit_length()) < 10

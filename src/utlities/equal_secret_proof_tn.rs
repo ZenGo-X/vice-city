@@ -1,6 +1,7 @@
+use crate::utlities::TN;
 use crate::ProofError;
 use bit_vec::BitVec;
-use curv::arithmetic::traits::{Converter, Modulo, Samplable};
+use curv::arithmetic::traits::{Converter, Samplable};
 use curv::cryptographic_primitives::hashing::hash_sha256::HSha256;
 use curv::cryptographic_primitives::hashing::traits::Hash;
 use curv::BigInt;
@@ -27,9 +28,9 @@ use rayon::prelude::*;
 
 //TODO: make proof generic for cryptosystem
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct EqProof {
+pub struct EqProofTN {
     pub ciphertext_i_vec: Vec<ElGamalCiphertext>,
-    pub h_prime_i_vec: Vec<BigInt>,
+    pub h_prime_i_vec: Vec<TN>,
     pub z_vec: Vec<Response>,
 }
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -39,24 +40,24 @@ pub struct Response {
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct EqWitness {
+pub struct EqWitnessTN {
     pub x: BigInt,
     pub r: BigInt,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct EqStatement {
+pub struct EqStatementTN {
     pub pk: ElGamalPublicKey,
-    pub h: BigInt,
-    pub h_prime: BigInt,
+    pub h: TN,
+    pub h_prime: TN,
     pub n: BigInt, // public parameter for h,h' (modulus n)
     pub ciphertext: ElGamalCiphertext,
     pub sec_param: usize,
     pub kapa: usize, // size of random sampled s_i,r_i, must be at least 100
 }
 
-impl EqProof {
-    pub fn prove(statement: &EqStatement, witness: &EqWitness) -> Result<Self, ProofError> {
+impl EqProofTN {
+    pub fn prove(statement: &EqStatementTN, witness: &EqWitnessTN) -> Result<Self, ProofError> {
         if statement.kapa < 100 {
             return Err(ProofError::EqError);
         }
@@ -71,8 +72,8 @@ impl EqProof {
 
         let h_prime_i_vec = (0..statement.sec_param)
             .into_par_iter()
-            .map(|i| BigInt::mod_pow(&statement.h, &s_i_vec[i], &statement.n))
-            .collect::<Vec<BigInt>>();
+            .map(|i| TN::pow(&statement.h, &s_i_vec[i], &statement.n))
+            .collect::<Vec<TN>>();
 
         let ciphertext_i_vec: Vec<_> = (0..statement.sec_param)
             .into_par_iter()
@@ -86,9 +87,9 @@ impl EqProof {
             })
             .collect();
 
-        let mut fs_input = vec![&statement.h, &statement.h_prime];
+        let mut fs_input = vec![&statement.h.a, &statement.h_prime.a];
         for i in 0..statement.sec_param {
-            fs_input.push(&h_prime_i_vec[i]);
+            fs_input.push(&h_prime_i_vec[i].a);
             fs_input.push(&ciphertext_i_vec[i].c2);
         }
         let e = HSha256::create_hash(&fs_input);
@@ -109,17 +110,17 @@ impl EqProof {
             })
             .collect();
 
-        Ok(EqProof {
+        Ok(EqProofTN {
             ciphertext_i_vec,
             h_prime_i_vec,
             z_vec: response_vec,
         })
     }
 
-    pub fn verify(&self, statement: &EqStatement) -> Result<(), ProofError> {
-        let mut fs_input = vec![&statement.h, &statement.h_prime];
+    pub fn verify(&self, statement: &EqStatementTN) -> Result<(), ProofError> {
+        let mut fs_input = vec![&statement.h.a, &statement.h_prime.a];
         for i in 0..statement.sec_param {
-            fs_input.push(&self.h_prime_i_vec[i]);
+            fs_input.push(&self.h_prime_i_vec[i].a);
             fs_input.push(&self.ciphertext_i_vec[i].c2);
         }
         let e = HSha256::create_hash(&fs_input);
@@ -137,7 +138,7 @@ impl EqProof {
                     )
                     .unwrap()
                         == self.ciphertext_i_vec[i]
-                        && BigInt::mod_pow(&statement.h, &self.z_vec[i].z1, &statement.n)
+                        && TN::pow(&statement.h, &self.z_vec[i].z1, &statement.n)
                             == self.h_prime_i_vec[i]
                 }
                 true => {
@@ -150,12 +151,8 @@ impl EqProof {
 
                     ExponentElGamal::add(&statement.ciphertext, &self.ciphertext_i_vec[i]).unwrap()
                         == c_star
-                        && BigInt::mod_pow(&statement.h, &self.z_vec[i].z1, &statement.n)
-                            == BigInt::mod_mul(
-                                &self.h_prime_i_vec[i],
-                                &statement.h_prime,
-                                &statement.n,
-                            )
+                        && TN::pow(&statement.h, &self.z_vec[i].z1, &statement.n)
+                            == TN::mul(&self.h_prime_i_vec[i], &statement.h_prime, &statement.n)
                 }
             })
             .collect();
@@ -170,10 +167,12 @@ impl EqProof {
 
 #[cfg(test)]
 mod tests {
-    use crate::utlities::equal_secret_proof::EqProof;
-    use crate::utlities::equal_secret_proof::EqStatement;
-    use crate::utlities::equal_secret_proof::EqWitness;
-    use curv::arithmetic::traits::{Modulo, Samplable};
+
+    use crate::utlities::equal_secret_proof_tn::EqProofTN;
+    use crate::utlities::equal_secret_proof_tn::EqStatementTN;
+    use crate::utlities::equal_secret_proof_tn::EqWitnessTN;
+    use crate::utlities::TN;
+    use curv::arithmetic::traits::Samplable;
     use curv::BigInt;
     use elgamal::prime::is_prime;
     use elgamal::rfc7919_groups::SupportedGroups;
@@ -192,17 +191,17 @@ mod tests {
             q = q + BigInt::one();
         }
         let n = p * q;
-        let h = BigInt::from(3);
+        let h = TN::new(&BigInt::from(3), &BigInt::from(5), &n).unwrap();
         let pp = ElGamalPP::generate_from_rfc7919(SupportedGroups::FFDHE2048);
         let keypair = ElGamalKeyPair::generate(&pp);
         let x = BigInt::sample_below(&pp.q);
         let r = BigInt::sample_below(&pp.q);
-        let h_prime = BigInt::mod_pow(&h, &x, &n);
+        let h_prime = TN::pow(&h, &x, &n);
         let ciphertext =
             ExponentElGamal::encrypt_from_predefined_randomness(&x, &keypair.pk, &r).unwrap();
-        let witness = EqWitness { x, r };
+        let witness = EqWitnessTN { x, r };
 
-        let statement = EqStatement {
+        let statement = EqStatementTN {
             pk: keypair.pk.clone(),
             h,
             h_prime,
@@ -212,7 +211,7 @@ mod tests {
             kapa: 100,
         };
 
-        let proof = EqProof::prove(&statement, &witness).unwrap();
+        let proof = EqProofTN::prove(&statement, &witness).unwrap();
         let verify = proof.verify(&statement);
         assert!(verify.is_ok())
     }

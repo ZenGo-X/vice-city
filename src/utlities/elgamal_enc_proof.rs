@@ -56,7 +56,7 @@ impl HomoELGamalProof {
                 &delta.ciphertext.c1,
                 &delta.ciphertext.c2,
             ],
-            &delta.pk.pp,
+            &delta.pk.pp.q,
             256, // TODO
         );
 
@@ -79,7 +79,7 @@ impl HomoELGamalProof {
                 &delta.ciphertext.c1,
                 &delta.ciphertext.c2,
             ],
-            &delta.pk.pp,
+            &delta.pk.pp.q,
             256,
         );
 

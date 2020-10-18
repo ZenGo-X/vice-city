@@ -1,5 +1,7 @@
+use crate::protocols::two_party_rsa::hmrt::compute_randomness_for_biprimality_test;
 use crate::protocols::two_party_rsa::hmrt::gen_ddh_containers;
 use crate::protocols::two_party_rsa::hmrt::party_two::KeySetupFirstMsg as KeySetupFirstMsgPartyTwo;
+use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoBiPrimalityTest;
 use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoCandidateGenerationFirstMsg;
 use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoCandidateGenerationSecondMsg;
 use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoCandidateGenerationThirdMsg;
@@ -19,6 +21,12 @@ use crate::utlities::dlog_proof::Witness as DLogWitness;
 use crate::utlities::elgamal_enc_proof::HomoELGamalProof;
 use crate::utlities::elgamal_enc_proof::HomoElGamalStatement;
 use crate::utlities::elgamal_enc_proof::HomoElGamalWitness;
+use crate::utlities::equal_secret_proof::EqProof;
+use crate::utlities::equal_secret_proof::EqStatement;
+use crate::utlities::equal_secret_proof::EqWitness;
+use crate::utlities::equal_secret_proof_tn::EqProofTN;
+use crate::utlities::equal_secret_proof_tn::EqStatementTN;
+use crate::utlities::equal_secret_proof_tn::EqWitnessTN;
 use crate::utlities::mod_proof::ModProof;
 use crate::utlities::mod_proof::ModStatement;
 use crate::utlities::mod_proof::ModWitness;
@@ -29,6 +37,7 @@ use crate::utlities::range_proof::RangeProof;
 use crate::utlities::range_proof::Statement as BoundStatement;
 use crate::utlities::range_proof::Witness as BoundWitness;
 use crate::utlities::verlin_proof::VerlinStatementElGamal;
+use crate::utlities::TN;
 use crate::TwoPartyRSAError;
 use curv::arithmetic::traits::Modulo;
 use curv::arithmetic::traits::Samplable;
@@ -57,7 +66,6 @@ use zk_paillier::zkproofs::{CiphertextProof, CiphertextStatement};
 use zk_paillier::zkproofs::{MulProof, MulStatement, MulWitness};
 use zk_paillier::zkproofs::{ZeroProof, ZeroStatement, ZeroWitness};
 
-// TODO: add zeroize if needed
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PartyOneKeySetup {
     pub local_paillier_pubkey: EncryptionKey,
@@ -149,6 +157,14 @@ pub struct PartyOneElgamalProductSecondMsg {
     pub ddh_proof: DDHProof,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PartyOneBiPrimalityTest {
+    pub gamma_0: BigInt,
+    pub u1: TN,
+    pub eq_proof: EqProof,
+    pub eq_proof_tn: EqProofTN,
+}
+
 impl PartyOneKeySetup {
     pub fn gen_local_keys_and_first_message_to_party_two(
     ) -> (PartyOneKeySetupFirstMsg, PartyOnePrivate) {
@@ -224,6 +240,61 @@ impl PartyOneCandidateGeneration {
     ) {
         let share_bit_size: usize = CANDIDATE_BIT_LENGTH / 2 - 2;
         let p_i = BigInt::sample(share_bit_size);
+        let r_i = BigInt::sample_below(&keys.joint_elgamal_pubkey.pp.q);
+
+        let c_i = ExponentElGamal::encrypt_from_predefined_randomness(
+            &p_i,
+            &keys.joint_elgamal_pubkey,
+            &r_i,
+        )
+        .unwrap();
+
+        let enc_witness = HomoElGamalWitness {
+            r: r_i.clone(),
+            m: p_i.clone(),
+        };
+        let enc_statement = HomoElGamalStatement {
+            pk: keys.joint_elgamal_pubkey.clone(),
+            ciphertext: c_i.clone(),
+        };
+        let bound_witness = BoundWitness {
+            x: p_i.clone(),
+            r: r_i.clone(),
+        };
+        let bound_statement = BoundStatement {
+            pk: keys.joint_elgamal_pubkey.clone(),
+            // TODO: in current range proof this will give some slack such that it is possible that a prover chose 2^(N/2-2)<x< 1/3 * 2^(N/2).
+            range: BigInt::from(2).pow((CANDIDATE_BIT_LENGTH / 2) as u32),
+            ciphertext: c_i.clone(),
+            sec_param: 120, //TODO : parameterize
+            kapa: 100,      //TODO : parameterize
+        };
+
+        let enc_proof = HomoELGamalProof::prove(&enc_witness, &enc_statement);
+        let bound_proof = RangeProof::prove(&bound_witness, &bound_statement).unwrap(); // TODO: handle error properly
+
+        (
+            PartyOneCandidateWitness {
+                p_0: p_i,
+                r_0: r_i,
+                r_0_paillier: BigInt::zero(),
+            },
+            PartyOneCandidateGenerationFirstMsg {
+                c_i,
+                pi_enc: enc_proof,
+                pi_bound: bound_proof,
+            },
+        )
+    }
+
+    pub fn generate_shares_of_candidate_inject_test(
+        keys: &PartyOneKeySetup,
+        prime_share: BigInt,
+    ) -> (
+        PartyOneCandidateWitness,
+        PartyOneCandidateGenerationFirstMsg,
+    ) {
+        let p_i = prime_share;
         let r_i = BigInt::sample_below(&keys.joint_elgamal_pubkey.pp.q);
 
         let c_i = ExponentElGamal::encrypt_from_predefined_randomness(
@@ -889,6 +960,178 @@ impl PartyOneComputeProduct {
                 }
             }
             false => Err(TwoPartyRSAError::InvalidElGamalMul),
+        }
+    }
+}
+
+impl PartyOneBiPrimalityTest {
+    // This function generates joint pubic randomness for gamma and h = ax + b (in TN).
+    // We do this by hashing the candidate N together with the joint elgamal key and a seed
+    // We next non interactively compute gamma_0 and u_0 (see [BF01]) together with pi_eq
+    pub fn compute(
+        n: &BigInt,
+        p: &PartyOneCandidateWitness,
+        q: &PartyOneCandidateWitness,
+        ciphertext_pair_p_candidate: &CiphertextPair,
+        ciphertext_pair_q_candidate: &CiphertextPair,
+        keys: &PartyOneKeySetup,
+        seed: &BigInt,
+    ) -> PartyOneBiPrimalityTest {
+        let four = BigInt::from(4);
+        let (gamma, h) =
+            compute_randomness_for_biprimality_test(&n, &keys.joint_elgamal_pubkey.h, &seed);
+
+        //compute e0:
+        let c_p0_plus_q0 = ExponentElGamal::add(
+            &ciphertext_pair_p_candidate.c0,
+            &ciphertext_pair_q_candidate.c0,
+        )
+        .unwrap();
+        let c_minus_p0_plus_q0 = ExponentElGamal::mul(&c_p0_plus_q0, &(-BigInt::one()));
+        // we use a fixed randomness
+        let c_n_plus_one = ExponentElGamal::encrypt_from_predefined_randomness(
+            &((n + BigInt::one()).modulus(&keys.joint_elgamal_pubkey.pp.q)),
+            &keys.joint_elgamal_pubkey,
+            &BigInt::from(2),
+        )
+        .unwrap();
+        let c_n_minus_p0_plus_q0_plus_one =
+            ExponentElGamal::add(&c_n_plus_one, &c_minus_p0_plus_q0).unwrap();
+        let four_inv = four.invert(&keys.joint_elgamal_pubkey.pp.q).unwrap();
+        let e_0 = ExponentElGamal::mul(&c_n_minus_p0_plus_q0_plus_one, &four_inv);
+
+        let r_e_0_four: BigInt = BigInt::mod_add(
+            &BigInt::from(2),
+            &BigInt::mod_sub(
+                &BigInt::zero(),
+                &(&p.r_0 + &q.r_0),
+                &keys.joint_elgamal_pubkey.pp.q,
+            ),
+            &keys.joint_elgamal_pubkey.pp.q,
+        );
+        let r_e_0 = BigInt::mod_mul(&r_e_0_four, &four_inv, &keys.joint_elgamal_pubkey.pp.q);
+        let n_minus_p0_plus_q0_plus_one_div_four =
+            (n + BigInt::one() - &p.p_0 - &q.p_0).div_floor(&four);
+        let gamma_0 = BigInt::mod_pow(&gamma, &n_minus_p0_plus_q0_plus_one_div_four, n);
+
+        let n_plus_p0_plus_q0_plus_one: BigInt = n + BigInt::one() + (&p.p_0 + &q.p_0);
+        let u1 = TN::pow(&h, &n_plus_p0_plus_q0_plus_one, n);
+
+        let gamma_eq_witness = EqWitness {
+            x: n_minus_p0_plus_q0_plus_one_div_four.clone(),
+            r: r_e_0.clone(),
+        };
+
+        let gamma_eq_statement = EqStatement {
+            pk: keys.joint_elgamal_pubkey.clone(),
+            h: gamma.clone(),
+            h_prime: gamma_0.clone(),
+            n: n.clone(),
+            ciphertext: e_0,
+            sec_param: 120,
+            kapa: 100,
+        };
+
+        let eq_proof = EqProof::prove(&gamma_eq_statement, &gamma_eq_witness).unwrap();
+
+        // repeat the proof but for u1:
+        let c_n_plus_1_plus_q0_plus_p0 =
+            ExponentElGamal::add(&c_p0_plus_q0, &c_n_plus_one).unwrap();
+        let r_c_n_plus_1_plus_q0_plus_p0: BigInt = BigInt::mod_add(
+            &BigInt::from(2),
+            &(&p.r_0 + &q.r_0),
+            &keys.joint_elgamal_pubkey.pp.q,
+        );
+
+        let h_eq_witness_tn = EqWitnessTN {
+            x: n_plus_p0_plus_q0_plus_one.clone(),
+            r: r_c_n_plus_1_plus_q0_plus_p0.clone(),
+        };
+
+        let h_eq_statement_tn = EqStatementTN {
+            pk: keys.joint_elgamal_pubkey.clone(),
+            h: h.clone(),
+            h_prime: u1.clone(),
+            n: n.clone(),
+            ciphertext: c_n_plus_1_plus_q0_plus_p0,
+            sec_param: 120,
+            kapa: 100,
+        };
+
+        let eq_proof_tn = EqProofTN::prove(&h_eq_statement_tn, &h_eq_witness_tn).unwrap();
+
+        return PartyOneBiPrimalityTest {
+            gamma_0,
+            u1,
+            eq_proof,
+            eq_proof_tn,
+        };
+    }
+
+    pub fn verify(
+        &self,
+        n: &BigInt,
+        ciphertext_pair_p_candidate: &CiphertextPair,
+        ciphertext_pair_q_candidate: &CiphertextPair,
+        party_two_biprime_test: &PartyTwoBiPrimalityTest,
+        seed: &BigInt,
+        keys: &PartyOneKeySetup,
+    ) -> Result<bool, TwoPartyRSAError> {
+        let four = BigInt::from(4);
+        let (gamma, h) =
+            compute_randomness_for_biprimality_test(&n, &keys.joint_elgamal_pubkey.h, &seed);
+
+        let c_p1_plus_q1 = ExponentElGamal::add(
+            &ciphertext_pair_p_candidate.c1,
+            &ciphertext_pair_q_candidate.c1,
+        )
+        .unwrap();
+        let c_minus_p1_plus_q1 = ExponentElGamal::mul(&c_p1_plus_q1, &(-BigInt::one()));
+        let four_inv = four.invert(&keys.joint_elgamal_pubkey.pp.q).unwrap();
+        let e_1 = ExponentElGamal::mul(&c_minus_p1_plus_q1, &four_inv);
+
+        let gamma_eq_statement = EqStatement {
+            pk: keys.joint_elgamal_pubkey.clone(),
+            h: gamma.clone(),
+            h_prime: party_two_biprime_test.gamma_1.clone(),
+            n: n.clone(),
+            ciphertext: e_1,
+            sec_param: 120,
+            kapa: 100,
+        };
+
+        let h_eq_statement_tn = EqStatementTN {
+            pk: keys.joint_elgamal_pubkey.clone(),
+            h: h.clone(),
+            h_prime: party_two_biprime_test.u2.clone(),
+            n: n.clone(),
+            ciphertext: c_p1_plus_q1,
+            sec_param: 120,
+            kapa: 100,
+        };
+
+        match party_two_biprime_test
+            .eq_proof
+            .verify(&gamma_eq_statement)
+            .is_ok()
+            && party_two_biprime_test
+                .eq_proof_tn
+                .verify(&h_eq_statement_tn)
+                .is_ok()
+        {
+            true => {
+                let gamma_test = BigInt::mod_mul(&self.gamma_0, &party_two_biprime_test.gamma_1, n);
+                let h_test = TN::mul(&self.u1, &party_two_biprime_test.u2, n);
+
+                if (gamma_test == BigInt::one() || gamma_test == (n - BigInt::one()))
+                    && h_test.a == BigInt::zero()
+                {
+                    return Ok(true);
+                } else {
+                    return Ok(false);
+                }
+            }
+            false => return Err(TwoPartyRSAError::BiPrimalityTestError),
         }
     }
 }

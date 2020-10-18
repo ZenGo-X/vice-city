@@ -53,7 +53,7 @@ impl NISigmaProof<DDHProof, DDHWitness, DDHStatement> for DDHProof {
 
         let e = hash(
             &[&delta.g1, &delta.g2, &delta.h1, &delta.h2, &a1, &a2],
-            &delta.pp,
+            &delta.pp.q,
             HASH_OUTPUT_BIT_SIZE,
         );
 
@@ -67,7 +67,7 @@ impl NISigmaProof<DDHProof, DDHWitness, DDHStatement> for DDHProof {
             &[
                 &delta.g1, &delta.g2, &delta.h1, &delta.h2, &self.a1, &self.a2,
             ],
-            &delta.pp,
+            &delta.pp.q,
             HASH_OUTPUT_BIT_SIZE,
         );
 

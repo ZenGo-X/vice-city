@@ -74,7 +74,7 @@ impl VerlinProofElGamal {
                 &statement.c_prime.c1,
                 &phi_a.c1,
             ],
-            &statement.pk.pp,
+            &statement.pk.pp.q,
             HASH_OUTPUT_BIT_SIZE,
         );
 
@@ -102,7 +102,7 @@ impl VerlinProofElGamal {
                 &statement.c_prime.c1,
                 &self.phi_a.c1,
             ],
-            &statement.pk.pp,
+            &statement.pk.pp.q,
             HASH_OUTPUT_BIT_SIZE,
         );
         let phi_x_e = ExponentElGamal::mul(&statement.phi_x, &e);

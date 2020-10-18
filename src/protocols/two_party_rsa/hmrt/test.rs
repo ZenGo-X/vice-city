@@ -1,7 +1,9 @@
+use crate::protocols::two_party_rsa::hmrt::party_one::PartyOneBiPrimalityTest;
 use crate::protocols::two_party_rsa::hmrt::party_one::PartyOneCandidateGeneration;
 use crate::protocols::two_party_rsa::hmrt::party_one::PartyOneCandidateWitness;
 use crate::protocols::two_party_rsa::hmrt::party_one::PartyOneComputeProduct;
 use crate::protocols::two_party_rsa::hmrt::party_one::PartyOneKeySetup;
+use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoBiPrimalityTest;
 use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoCandidateGeneration;
 use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoCandidateWitness;
 use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoComputeProduct;
@@ -331,7 +333,7 @@ fn test_trial_division_for_prime() {
                     && BigInt::gcd(&alpha, &prime_scaled) > BigInt::one())
         );
     }
-    //assert!(false);
+    assert!(false);
 }
 
 #[test]
@@ -402,9 +404,7 @@ fn test_compute_product() {
 }
 
 #[test]
-fn test_computee_and_verify_product() {
-    // we first generate some candidates (for this test - it doesn't matter if they are actually primes)
-
+fn test_compute_and_verify_product() {
     let (party_one_first_message, party_one_private) =
         PartyOneKeySetup::gen_local_keys_and_first_message_to_party_two();
 
@@ -562,4 +562,350 @@ fn test_computee_and_verify_product() {
         &party_two_keys,
     )
     .expect("");
+}
+
+#[test]
+fn test_biprimality() {
+    // we first generate some candidates (for this test - it doesn't matter if they are actually primes)
+
+    let (party_one_first_message, party_one_private) =
+        PartyOneKeySetup::gen_local_keys_and_first_message_to_party_two();
+
+    let (party_two_first_message, party_two_private) =
+        PartyTwoKeySetup::gen_local_keys_and_first_message_to_party_one();
+
+    let party_one_key_setup_result =
+        PartyOneKeySetup::verify_party_two_first_message_and_output_party_one_keys(
+            &party_one_first_message,
+            &party_two_first_message,
+            party_one_private,
+        );
+    let party_two_key_setup_result =
+        PartyTwoKeySetup::verify_party_one_first_message_and_output_party_two_keys(
+            &party_one_first_message,
+            &party_two_first_message,
+            party_two_private,
+        );
+
+    let party_one_keys = party_one_key_setup_result.unwrap();
+    let party_two_keys = party_two_key_setup_result.unwrap();
+
+    let (p1, party_one_td_first_message) =
+        PartyOneCandidateGeneration::generate_shares_of_candidate(&party_one_keys);
+
+    let (p2, party_two_td_first_message) =
+        PartyTwoCandidateGeneration::generate_shares_of_candidate(&party_two_keys);
+
+    let party_one_first_message_res =
+        PartyOneCandidateGeneration::verify_party_two_first_message_and_normalize_ciphertexts(
+            &party_one_keys,
+            &party_one_td_first_message,
+            &party_two_td_first_message,
+        );
+    let party_one_ciphertext_pair_p = party_one_first_message_res.expect("");
+
+    let party_two_first_message_res =
+        PartyTwoCandidateGeneration::verify_party_one_first_message_and_normalize_ciphertexts(
+            &party_two_keys,
+            &party_one_td_first_message,
+            &party_two_td_first_message,
+        );
+    let party_two_ciphertext_pair_p = party_two_first_message_res.expect("");
+
+    assert_eq!(party_one_ciphertext_pair_p, party_two_ciphertext_pair_p);
+
+    let (q1, party_one_td_first_message) =
+        PartyOneCandidateGeneration::generate_shares_of_candidate(&party_one_keys);
+
+    let (q2, party_two_td_first_message) =
+        PartyTwoCandidateGeneration::generate_shares_of_candidate(&party_two_keys);
+
+    let party_one_first_message_res =
+        PartyOneCandidateGeneration::verify_party_two_first_message_and_normalize_ciphertexts(
+            &party_one_keys,
+            &party_one_td_first_message,
+            &party_two_td_first_message,
+        );
+    let party_one_ciphertext_pair_q = party_one_first_message_res.expect("");
+
+    let party_two_first_message_res =
+        PartyTwoCandidateGeneration::verify_party_one_first_message_and_normalize_ciphertexts(
+            &party_two_keys,
+            &party_one_td_first_message,
+            &party_two_td_first_message,
+        );
+    let party_two_ciphertext_pair_q = party_two_first_message_res.expect("");
+    assert_eq!(party_one_ciphertext_pair_q, party_two_ciphertext_pair_q);
+
+    //normalize plaintext (just for the sake of test)
+
+    let p1 = PartyOneCandidateWitness {
+        p_0: &p1.p_0 * BigInt::from(4) + &BigInt::from(3),
+        r_0: &p1.r_0 * BigInt::from(4),
+        r_0_paillier: BigInt::zero(),
+    };
+    let p2 = PartyTwoCandidateWitness {
+        p_1: &p2.p_1 * BigInt::from(4),
+        r_1: &p2.r_1 * BigInt::from(4),
+    };
+    let q1 = PartyOneCandidateWitness {
+        p_0: &q1.p_0 * BigInt::from(4) + &BigInt::from(3),
+        r_0: &q1.r_0 * BigInt::from(4),
+        r_0_paillier: BigInt::zero(),
+    };
+    let q2 = PartyTwoCandidateWitness {
+        p_1: &q2.p_1 * BigInt::from(4),
+        r_1: &q2.r_1 * BigInt::from(4),
+    };
+
+    // we need p,q,N for this test
+    let p = &p1.p_0 + &p2.p_1;
+    let q = &q1.p_0 + &q2.p_1;
+    let n: BigInt = &p * &q;
+
+    let l = 4;
+    let mut result_vec = Vec::new();
+    for i in 1..l {
+        let seed = BigInt::from(i);
+        let party_one_biprime_test = PartyOneBiPrimalityTest::compute(
+            &n,
+            &p1,
+            &q1,
+            &party_one_ciphertext_pair_p,
+            &party_one_ciphertext_pair_q,
+            &party_one_keys,
+            &seed,
+        );
+
+        let party_two_biprime_test = PartyTwoBiPrimalityTest::compute(
+            &n,
+            &p2,
+            &q2,
+            &party_two_ciphertext_pair_p,
+            &party_two_ciphertext_pair_q,
+            &party_two_keys,
+            &seed,
+        );
+
+        let party_one_res = party_one_biprime_test.verify(
+            &n,
+            &party_one_ciphertext_pair_p,
+            &party_one_ciphertext_pair_q,
+            &party_two_biprime_test,
+            &seed,
+            &party_one_keys,
+        );
+
+        assert!(party_one_res.is_ok());
+        let party_two_res = party_two_biprime_test.verify(
+            &n,
+            &party_two_ciphertext_pair_p,
+            &party_two_ciphertext_pair_q,
+            &party_one_biprime_test,
+            &seed,
+            &party_two_keys,
+        );
+        assert!(party_two_res.is_ok());
+        assert_eq!(party_one_res.unwrap(), party_two_res.unwrap());
+        result_vec.push(party_one_res.unwrap());
+    }
+
+    if is_prime(&p) && is_prime(&q) {
+        assert!(result_vec.iter().all(|x| *x));
+    } else {
+        assert_eq!(result_vec.iter().all(|x| *x), false)
+    }
+}
+
+#[test]
+fn test_biprimality_for_p_q_primes() {
+    // we first generate some candidates (for this test - it doesn't matter if they are actually primes)
+
+    let (party_one_first_message, party_one_private) =
+        PartyOneKeySetup::gen_local_keys_and_first_message_to_party_two();
+
+    let (party_two_first_message, party_two_private) =
+        PartyTwoKeySetup::gen_local_keys_and_first_message_to_party_one();
+
+    let party_one_key_setup_result =
+        PartyOneKeySetup::verify_party_two_first_message_and_output_party_one_keys(
+            &party_one_first_message,
+            &party_two_first_message,
+            party_one_private,
+        );
+    let party_two_key_setup_result =
+        PartyTwoKeySetup::verify_party_one_first_message_and_output_party_two_keys(
+            &party_one_first_message,
+            &party_two_first_message,
+            party_two_private,
+        );
+
+    let party_one_keys = party_one_key_setup_result.unwrap();
+    let party_two_keys = party_two_key_setup_result.unwrap();
+
+    let mut c = BigInt::sample(1000);
+    c = c * BigInt::from(4) + BigInt::from(3);
+    while !is_prime(&c) {
+        c = BigInt::sample(1000);
+        c = c * BigInt::from(4) + BigInt::from(3);
+    }
+
+    let c_scaled = (c - BigInt::from(3)).div_floor(&BigInt::from(4));
+    let rand = BigInt::sample_below(&c_scaled);
+    let p1 = &c_scaled - &rand;
+    let p2 = rand;
+
+    let mut d = BigInt::sample(1000);
+    d = d * BigInt::from(4) + BigInt::from(3);
+    while !is_prime(&d) {
+        d = BigInt::sample(1000);
+        d = d * BigInt::from(4) + BigInt::from(3);
+    }
+
+    let d_scaled = (d - BigInt::from(3)).div_floor(&BigInt::from(4));
+    let rand = BigInt::sample_below(&d_scaled);
+    let q1 = &d_scaled - &rand;
+    let q2 = rand;
+
+    let (p1, party_one_td_first_message) =
+        PartyOneCandidateGeneration::generate_shares_of_candidate_inject_test(&party_one_keys, p1);
+
+    let (p2, party_two_td_first_message) =
+        PartyTwoCandidateGeneration::generate_shares_of_candidate_inject_test(&party_two_keys, p2);
+
+    let party_one_first_message_res =
+        PartyOneCandidateGeneration::verify_party_two_first_message_and_normalize_ciphertexts(
+            &party_one_keys,
+            &party_one_td_first_message,
+            &party_two_td_first_message,
+        );
+    let party_one_ciphertext_pair_p = party_one_first_message_res.expect("");
+
+    let party_two_first_message_res =
+        PartyTwoCandidateGeneration::verify_party_one_first_message_and_normalize_ciphertexts(
+            &party_two_keys,
+            &party_one_td_first_message,
+            &party_two_td_first_message,
+        );
+    let party_two_ciphertext_pair_p = party_two_first_message_res.expect("");
+
+    assert_eq!(party_one_ciphertext_pair_p, party_two_ciphertext_pair_p);
+
+    let (q1, party_one_td_first_message) =
+        PartyOneCandidateGeneration::generate_shares_of_candidate_inject_test(&party_one_keys, q1);
+
+    let (q2, party_two_td_first_message) =
+        PartyTwoCandidateGeneration::generate_shares_of_candidate_inject_test(&party_two_keys, q2);
+
+    let party_one_first_message_res =
+        PartyOneCandidateGeneration::verify_party_two_first_message_and_normalize_ciphertexts(
+            &party_one_keys,
+            &party_one_td_first_message,
+            &party_two_td_first_message,
+        );
+    let party_one_ciphertext_pair_q = party_one_first_message_res.expect("");
+
+    let party_two_first_message_res =
+        PartyTwoCandidateGeneration::verify_party_one_first_message_and_normalize_ciphertexts(
+            &party_two_keys,
+            &party_one_td_first_message,
+            &party_two_td_first_message,
+        );
+    let party_two_ciphertext_pair_q = party_two_first_message_res.expect("");
+    assert_eq!(party_one_ciphertext_pair_q, party_two_ciphertext_pair_q);
+
+    //normalize plaintext (just for the sake of test)
+
+    let p1 = PartyOneCandidateWitness {
+        p_0: &p1.p_0 * BigInt::from(4) + &BigInt::from(3),
+        r_0: &p1.r_0 * BigInt::from(4),
+        r_0_paillier: BigInt::zero(),
+    };
+    let p2 = PartyTwoCandidateWitness {
+        p_1: &p2.p_1 * BigInt::from(4),
+        r_1: &p2.r_1 * BigInt::from(4),
+    };
+    let q1 = PartyOneCandidateWitness {
+        p_0: &q1.p_0 * BigInt::from(4) + &BigInt::from(3),
+        r_0: &q1.r_0 * BigInt::from(4),
+        r_0_paillier: BigInt::zero(),
+    };
+    let q2 = PartyTwoCandidateWitness {
+        p_1: &q2.p_1 * BigInt::from(4),
+        r_1: &q2.r_1 * BigInt::from(4),
+    };
+
+    // we need p,q,N for this test
+    let p = &p1.p_0 + &p2.p_1;
+    let q = &q1.p_0 + &q2.p_1;
+
+    let n: BigInt = &p * &q;
+
+    let l = 5;
+    let mut result_vec = Vec::new();
+    for i in 1..l {
+        let seed = BigInt::from(i);
+        let party_one_biprime_test = PartyOneBiPrimalityTest::compute(
+            &n,
+            &p1,
+            &q1,
+            &party_one_ciphertext_pair_p,
+            &party_one_ciphertext_pair_q,
+            &party_one_keys,
+            &seed,
+        );
+
+        let party_two_biprime_test = PartyTwoBiPrimalityTest::compute(
+            &n,
+            &p2,
+            &q2,
+            &party_two_ciphertext_pair_p,
+            &party_two_ciphertext_pair_q,
+            &party_two_keys,
+            &seed,
+        );
+
+        let party_one_res = party_one_biprime_test.verify(
+            &n,
+            &party_one_ciphertext_pair_p,
+            &party_one_ciphertext_pair_q,
+            &party_two_biprime_test,
+            &seed,
+            &party_one_keys,
+        );
+
+        assert!(party_one_res.is_ok());
+        let party_two_res = party_two_biprime_test.verify(
+            &n,
+            &party_two_ciphertext_pair_p,
+            &party_two_ciphertext_pair_q,
+            &party_one_biprime_test,
+            &seed,
+            &party_two_keys,
+        );
+        assert!(party_two_res.is_ok());
+        assert_eq!(party_one_res.unwrap(), party_two_res.unwrap());
+        result_vec.push(party_one_res.unwrap());
+        println!("result_vec {:?}", result_vec.clone());
+    }
+
+    if is_prime(&p) && is_prime(&q) {
+        assert!(result_vec.iter().all(|x| *x));
+    } else {
+        println!("result_vec {:?}", result_vec.clone());
+        assert_eq!(result_vec.iter().all(|x| *x), false)
+    }
+
+    assert!(false);
+}
+
+use curv::arithmetic::traits::Samplable;
+#[test]
+fn test_prime() {
+    let mut c = BigInt::sample(1024);
+    c = c * BigInt::from(4) + BigInt::from(3);
+    while !is_prime(&c) {
+        c = c + BigInt::one();
+        c = c * BigInt::from(4) + BigInt::from(3);
+    }
 }
