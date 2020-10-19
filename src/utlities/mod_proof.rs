@@ -8,7 +8,7 @@ use elgamal::ElGamalCiphertext;
 use elgamal::ElGamalPublicKey;
 use elgamal::ExponentElGamal;
 
-const SECPARAM: usize = 120;
+const SECPARAM: usize = 1;
 const KAPA: usize = 100;
 
 /// taken from page 13 of [https://eprint.iacr.org/2011/494.pdf] bullet 2:

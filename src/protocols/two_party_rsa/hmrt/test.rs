@@ -9,6 +9,7 @@ use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoCandidateWitness;
 use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoComputeProduct;
 use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoKeySetup;
 use crate::utlities::SMALL_PRIMES;
+use curv::arithmetic::traits::Samplable;
 use curv::BigInt;
 use elgamal::prime::is_prime;
 
@@ -897,15 +898,4 @@ fn test_biprimality_for_p_q_primes() {
     }
 
     assert!(false);
-}
-
-use curv::arithmetic::traits::Samplable;
-#[test]
-fn test_prime() {
-    let mut c = BigInt::sample(1024);
-    c = c * BigInt::from(4) + BigInt::from(3);
-    while !is_prime(&c) {
-        c = c + BigInt::one();
-        c = c * BigInt::from(4) + BigInt::from(3);
-    }
 }

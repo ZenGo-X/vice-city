@@ -64,3 +64,6 @@ fn compute_randomness_for_biprimality_test(
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod intergration_test;
