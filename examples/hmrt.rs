@@ -15,7 +15,7 @@ use vice_city::utlities::SMALL_PRIMES;
 //use rayon::prelude::*;
 use std::time::Instant;
 
-const B: usize = 200;
+const B: usize = 210;
 const L: usize = 2;
 
 // total number of rounds is 8 (given that for each round we aggragate enough messages of the same type)
