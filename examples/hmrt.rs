@@ -14,14 +14,16 @@ use vice_city::utlities::SMALL_PRIMES;
 
 //use rayon::prelude::*;
 use std::time::Instant;
+use vice_city::utlities::trial_div_pub;
 
-const B: usize = 2000;
+const B: usize = 11;
 const L: usize = 2;
 
 // total number of rounds is 8 (given that for each round we aggragate enough messages of the same type)
 fn main() {
     println!("START");
     let protocol_start = Instant::now();
+    loop {
 
     // key setup - one round
     let (party_one_first_message, party_one_private) =
@@ -60,7 +62,7 @@ fn main() {
     let mut ctr;
     println!("KEYGEN DONE");
 
-    loop {
+
         ctr = 0;
         loop {
             ctr = ctr + 1;
@@ -380,6 +382,17 @@ fn main() {
         )
         .expect("");
 
+        //// trial division for N_tilde (done locally by by both parties)
+        if !trial_div_pub(B, 2048, &party_one_cp_second_message.n_tilde).unwrap() {
+            //debug
+            let p = &p1.p_0 + &p2.p_1;
+            let q = &q1.p_0 + &q2.p_1;
+            println!("is_prime(p): {:?}", is_prime(&p));
+            println!("is_prime(q): {:?}", is_prime(&q));
+            //
+            continue;
+        }
+
         ///// test biprimality . total of one round.
 
         let mut i = 1;
@@ -435,10 +448,12 @@ fn main() {
             i = i + 1;
         }
         if i < L {
+            // debug
             let p = &p1.p_0 + &p2.p_1;
             let q = &q1.p_0 + &q2.p_1;
             println!("is_prime(p): {:?}", is_prime(&p));
             println!("is_prime(q): {:?}", is_prime(&q));
+            //
             continue;
         } else {
             // we found our N

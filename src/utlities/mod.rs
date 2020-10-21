@@ -2,6 +2,8 @@ use curv::arithmetic::traits::Modulo;
 use curv::cryptographic_primitives::hashing::hash_sha256::HSha256;
 use curv::cryptographic_primitives::hashing::traits::Hash;
 use curv::BigInt;
+use rayon::iter::IntoParallelIterator;
+use rayon::iter::ParallelIterator;
 
 pub mod ddh_proof;
 pub mod dlog_proof;
@@ -27,6 +29,24 @@ pub fn hash(input: &[&BigInt], q: &BigInt, hash_output_bitlen: usize) -> BigInt 
         res = (&res << hash_output_bitlen) + HSha256::create_hash(&[&res]);
     }
     res.modulus(&q)
+}
+
+// checks if alpha divides n
+pub fn is_divide(alpha: &BigInt, n : &BigInt ) -> bool{
+     n % alpha == BigInt::zero()
+}
+
+// if no prime below bound b divides n return true, otherwise return false
+pub fn trial_div_pub(init: usize, bound: usize, n: &BigInt) -> Result<bool,()>{
+    if bound > SMALL_PRIMES.len() {return Err(())}
+    let res: Vec<bool> = (0..(bound-init)).into_par_iter().map(|b|{
+        !is_divide(&BigInt::from(SMALL_PRIMES[init + b]),n)
+    }).collect();
+    match res.iter().all(|x| *x){
+        true => Ok(true),
+        false => Ok(false),
+    }
+
 }
 
 // BoringSSL's table.
@@ -386,6 +406,8 @@ mod tests {
     use curv::arithmetic::traits::Samplable;
     use curv::BigInt;
     use elgamal::prime::is_prime;
+    use crate::utlities::is_divide;
+    use crate::utlities::trial_div_pub;
 
     #[test]
     fn test_pow_2048_bit() {
@@ -411,5 +433,24 @@ mod tests {
         let h_pow_x = TN::pow(&h, &x, &n);
 
         assert_eq!(h_pow_x.a, TN::identity().a);
+    }
+
+    #[test]
+    fn test_is_div(){
+        let alpha_a = BigInt::from(2);
+        let alpha_b = BigInt::from(3);
+        let n = BigInt::from(10);
+        assert!(is_divide(&alpha_a, &n));
+        assert!(!is_divide(&alpha_b, &n));
+
+    }
+
+    #[test]
+    fn test_trial_div(){
+        let mut p = BigInt::sample(128);
+        while !is_prime(&p){p = p + BigInt::one()};
+        assert!(trial_div_pub(0,2048, &p).unwrap());
+        assert!(!trial_div_pub(0,2048, &(&p+BigInt::one())).unwrap());
+
     }
 }

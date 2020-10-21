@@ -65,6 +65,7 @@ use zk_paillier::zkproofs::SALT_STRING;
 use zk_paillier::zkproofs::{CiphertextProof, CiphertextStatement};
 use zk_paillier::zkproofs::{MulProof, MulStatement, MulWitness};
 use zk_paillier::zkproofs::{ZeroProof, ZeroStatement, ZeroWitness};
+use crate::protocols::two_party_rsa::SEC_PARAM;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PartyOneKeySetup {
@@ -266,7 +267,7 @@ impl PartyOneCandidateGeneration {
             // TODO: in current range proof this will give some slack such that it is possible that a prover chose 2^(N/2-2)<x< 1/3 * 2^(N/2).
             range: BigInt::from(2).pow((CANDIDATE_BIT_LENGTH / 2) as u32),
             ciphertext: c_i.clone(),
-            sec_param: 120, //TODO : parameterize
+            sec_param: SEC_PARAM, //TODO : parameterize
             kapa: 100,      //TODO : parameterize
         };
 
@@ -321,7 +322,7 @@ impl PartyOneCandidateGeneration {
             // TODO: in current range proof this will give some slack such that it is possible that a prover chose 2^(N/2-2)<x< 1/3 * 2^(N/2).
             range: BigInt::from(2).pow((CANDIDATE_BIT_LENGTH / 2) as u32),
             ciphertext: c_i.clone(),
-            sec_param: 120, //TODO : parameterize
+            sec_param: SEC_PARAM,
             kapa: 100,      //TODO : parameterize
         };
 
@@ -356,7 +357,7 @@ impl PartyOneCandidateGeneration {
             pk: keys.joint_elgamal_pubkey.clone(),
             range: BigInt::from(2).pow((CANDIDATE_BIT_LENGTH / 2) as u32),
             ciphertext: party_two_first_message.c_i.clone(),
-            sec_param: 120,
+            sec_param: SEC_PARAM,
             kapa: 100,
         };
 
@@ -1028,7 +1029,7 @@ impl PartyOneBiPrimalityTest {
             h_prime: gamma_0.clone(),
             n: n.clone(),
             ciphertext: e_0,
-            sec_param: 120,
+            sec_param: SEC_PARAM,
             kapa: 100,
         };
 
@@ -1054,7 +1055,7 @@ impl PartyOneBiPrimalityTest {
             h_prime: u1.clone(),
             n: n.clone(),
             ciphertext: c_n_plus_1_plus_q0_plus_p0,
-            sec_param: 120,
+            sec_param: SEC_PARAM,
             kapa: 100,
         };
 
@@ -1096,7 +1097,7 @@ impl PartyOneBiPrimalityTest {
             h_prime: party_two_biprime_test.gamma_1.clone(),
             n: n.clone(),
             ciphertext: e_1,
-            sec_param: 120,
+            sec_param: SEC_PARAM,
             kapa: 100,
         };
 
@@ -1106,7 +1107,7 @@ impl PartyOneBiPrimalityTest {
             h_prime: party_two_biprime_test.u2.clone(),
             n: n.clone(),
             ciphertext: c_p1_plus_q1,
-            sec_param: 120,
+            sec_param: SEC_PARAM,
             kapa: 100,
         };
 
