@@ -1135,20 +1135,6 @@ impl PartyOneBiPrimalityTest {
             kapa: 100,
         };
 
-        println!(
-            "test1 {:?}",
-            party_two_biprime_test
-                .eq_proof
-                .verify(&gamma_eq_statement)
-                .is_ok()
-        );
-        println!(
-            "test2 {:?}",
-            party_two_biprime_test
-                .eq_proof_tn
-                .verify(&h_eq_statement_tn)
-                .is_ok()
-        );
         match party_two_biprime_test
             .eq_proof
             .verify(&gamma_eq_statement)

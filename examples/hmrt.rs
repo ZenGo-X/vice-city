@@ -567,13 +567,6 @@ fn main() {
             k = k + 1;
         }
         if k < L {
-            // debug
-            let p = &p1.p_0 + &p2.p_1;
-            let q = &q1.p_0 + &q2.p_1;
-            println!("is_prime(p): {:?}", is_prime(&p));
-            println!("is_prime(q): {:?}", is_prime(&q));
-            //
-            // continue;
             continue;
         } else {
             // we found our N
