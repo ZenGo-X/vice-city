@@ -567,7 +567,7 @@ fn test_compute_and_verify_product() {
 
 #[test]
 fn test_biprimality() {
-    for _ in  1..500 {
+    for _ in 1..500 {
         // we first generate some candidates (for this test - it doesn't matter if they are actually primes)
 
         let (party_one_first_message, party_one_private) =
@@ -722,7 +722,6 @@ fn test_biprimality() {
 
 #[test]
 fn test_biprimality_for_p_q_primes() {
-
     // we first generate some candidates (for this test - it doesn't matter if they are actually primes)
 
     let (party_one_first_message, party_one_private) =

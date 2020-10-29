@@ -32,21 +32,23 @@ pub fn hash(input: &[&BigInt], q: &BigInt, hash_output_bitlen: usize) -> BigInt 
 }
 
 // checks if alpha divides n
-pub fn is_divide(alpha: &BigInt, n : &BigInt ) -> bool{
-     n % alpha == BigInt::zero()
+pub fn is_divide(alpha: &BigInt, n: &BigInt) -> bool {
+    n % alpha == BigInt::zero()
 }
 
 // if no prime below bound b divides n return true, otherwise return false
-pub fn trial_div_pub(init: usize, bound: usize, n: &BigInt) -> Result<bool,()>{
-    if bound > MEDUIM_PRIMES.len() {return Err(())}
-    let res: Vec<bool> = (0..(bound-init)).into_par_iter().map(|b|{
-        !is_divide(&BigInt::from(MEDUIM_PRIMES[init + b]),n)
-    }).collect();
-    match res.iter().all(|x| *x){
+pub fn trial_div_pub(init: usize, bound: usize, n: &BigInt) -> Result<bool, ()> {
+    if bound > MEDUIM_PRIMES.len() {
+        return Err(());
+    }
+    let res: Vec<bool> = (0..(bound - init))
+        .into_par_iter()
+        .map(|b| !is_divide(&BigInt::from(MEDUIM_PRIMES[init + b]), n))
+        .collect();
+    match res.iter().all(|x| *x) {
         true => Ok(true),
         false => Ok(false),
     }
-
 }
 
 // BoringSSL's table.
@@ -402,12 +404,12 @@ impl TN {
 
 #[cfg(test)]
 mod tests {
+    use crate::utlities::is_divide;
+    use crate::utlities::trial_div_pub;
     use crate::utlities::TN;
     use curv::arithmetic::traits::Samplable;
     use curv::BigInt;
     use elgamal::prime::is_prime;
-    use crate::utlities::is_divide;
-    use crate::utlities::trial_div_pub;
 
     #[test]
     fn test_pow_2048_bit() {
@@ -436,25 +438,24 @@ mod tests {
     }
 
     #[test]
-    fn test_is_div(){
+    fn test_is_div() {
         let alpha_a = BigInt::from(2);
         let alpha_b = BigInt::from(3);
         let n = BigInt::from(10);
         assert!(is_divide(&alpha_a, &n));
         assert!(!is_divide(&alpha_b, &n));
-
     }
 
     #[test]
-    fn test_trial_div(){
+    fn test_trial_div() {
         let mut p = BigInt::sample(128);
-        while !is_prime(&p){p = p + BigInt::one()};
-        assert!(trial_div_pub(0,2048, &p).unwrap());
-        assert!(!trial_div_pub(0,2048, &(&p+BigInt::one())).unwrap());
-
+        while !is_prime(&p) {
+            p = p + BigInt::one()
+        }
+        assert!(trial_div_pub(0, 2048, &p).unwrap());
+        assert!(!trial_div_pub(0, 2048, &(&p + BigInt::one())).unwrap());
     }
 }
-
 
 #[rustfmt::skip]
 pub static MEDUIM_PRIMES: [u32; 78497] = [
