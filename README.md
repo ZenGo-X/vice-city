@@ -5,7 +5,7 @@ The code in this library follows protocol 4 from [Efficient RSA Key Generation a
 ## Warnings
 - Audit: The code is not audited
 - Stability: Breaking changes are expected
-- Performence: Producing an RSA biprime of sufficient length (2048bits) is extremely slow
+- Performance: Producing an RSA biprime of sufficient length (2048bits) is extremely slow
 
 
 ## How to use this library and for what
