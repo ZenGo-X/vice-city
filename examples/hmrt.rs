@@ -270,7 +270,6 @@ fn main() {
 
         // Pre sieving :
         // pick alpha in B :
-        start = Instant::now();
         let mut b = 0;
         while b < B {
             let alpha = BigInt::from(SMALL_PRIMES[b]);

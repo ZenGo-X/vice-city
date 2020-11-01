@@ -250,7 +250,7 @@ impl PartyTwoCandidateGeneration {
         PartyTwoCandidateWitness,
         PartyTwoCandidateGenerationFirstMsg,
     ) {
-        let share_bit_size: usize = CANDIDATE_BIT_LENGTH / 2 - 2;
+        let share_bit_size: usize = CANDIDATE_BIT_LENGTH / 2 - 2 ;
         let p_i = BigInt::sample(share_bit_size);
         let r_i = BigInt::sample_below(&keys.joint_elgamal_pubkey.pp.q);
 

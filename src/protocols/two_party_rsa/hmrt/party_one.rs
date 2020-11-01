@@ -263,8 +263,8 @@ impl PartyOneCandidateGeneration {
         PartyOneCandidateWitness,
         PartyOneCandidateGenerationFirstMsg,
     ) {
-        let share_bit_size: usize = CANDIDATE_BIT_LENGTH / 2 - 2;
-        let p_i = BigInt::sample(share_bit_size);
+        let share_bit_size: usize = CANDIDATE_BIT_LENGTH / 2 - 2 ;
+        let p_i = BigInt::sample(share_bit_size );
         let r_i = BigInt::sample_below(&keys.joint_elgamal_pubkey.pp.q);
 
         let c_i = ExponentElGamal::encrypt_from_predefined_randomness(
@@ -379,7 +379,7 @@ impl PartyOneCandidateGeneration {
 
         let bound_statement = BoundStatement {
             pk: keys.joint_elgamal_pubkey.clone(),
-            range: BigInt::from(2).pow((CANDIDATE_BIT_LENGTH / 2) as u32),
+            range: BigInt::from(2).pow((CANDIDATE_BIT_LENGTH / 2 ) as u32),
             ciphertext: party_two_first_message.c_i.clone(),
             sec_param: SEC_PARAM,
             kapa: 100,

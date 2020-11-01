@@ -495,6 +495,7 @@ fn test_compute_and_verify_product() {
         r_1: &q2.r_1 * BigInt::from(4),
     };
 
+
     let party_one_cp_first_message =
         PartyOneComputeProduct::send_candidate_ciphertexts(&mut p1, &mut q1, &party_one_keys);
 
@@ -841,6 +842,7 @@ fn test_biprimality_for_p_q_primes() {
     // we need p,q,N for this test
     let p = &p1.p_0 + &p2.p_1;
     let q = &q1.p_0 + &q2.p_1;
+
 
     let n: BigInt = &p * &q;
 
