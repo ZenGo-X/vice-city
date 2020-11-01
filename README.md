@@ -1,6 +1,6 @@
 # Two Party Distributed RSA Modulus Generation
 
-The code in this library follows protocol 4 from [Efficient RSA Key Generation and Threshold Paillier in the Two-Party Setting](https://eprint.iacr.org/2011/494.pdf) together with insights from newer works ([1](https://eprint.iacr.org/2018/577.pdf), [2](https://eprint.iacr.org/2020/370.pdf), [3](https://eprint.iacr.org/2020/374)) and older work ([BF01](https://crypto.stanford.edu/~dabo/pubs/papers/sharing.ps)). The code heavily relies on the [zk-paillier](https://github.com/ZenGo-X/zk-paillier) and [rust-elgamal](https://github.com/ZenGo-X/rust-elgamal) libraries.
+The code in this library follows protocol 4 from [Efficient RSA Key Generation and Threshold Paillier in the Two-Party Setting](https://eprint.iacr.org/2011/494.pdf) together with insights from newer works ([1](https://eprint.iacr.org/2018/577.pdf), [2](https://eprint.iacr.org/2020/370.pdf), [3](https://eprint.iacr.org/2020/374)) and older work ([BF01](https://crypto.stanford.edu/~dabo/pubs/papers/sharing.ps)). The code heavily relies on the [zk-paillier](https://github.com/ZenGo-X/zk-paillier) and [rust-elgamal](https://github.com/ZenGo-X/rust-elgamal) libraries. The protocol is secure against malicious adversaries.
 
 ## Warnings
 - Audit: The code is not audited
