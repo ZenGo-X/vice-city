@@ -62,9 +62,6 @@ fn compute_randomness_for_biprimality_test(
     (gamma, h)
 }
 
-
-
-
 #[cfg(test)]
 mod test;
 

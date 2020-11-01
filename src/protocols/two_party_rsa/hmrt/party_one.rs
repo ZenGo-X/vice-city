@@ -3,13 +3,17 @@ use crate::protocols::two_party_rsa::hmrt::gen_ddh_containers;
 use crate::protocols::two_party_rsa::hmrt::party_two::KeySetupFirstMsg as KeySetupFirstMsgPartyTwo;
 use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoBiPrimalityTest;
 use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoCandidateGenerationFirstMsg;
+use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoCandidateGenerationFirstMsgSemiHonest;
 use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoCandidateGenerationSecondMsg;
+use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoCandidateGenerationSecondMsgSemiHonest;
 use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoCandidateGenerationThirdMsg;
+use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoCandidateGenerationThirdMsgSemiHonest;
 use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoComputeProductFirstMsg;
 use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoElgamalProductFirstMsg;
 use crate::protocols::two_party_rsa::hmrt::CiphertextPair;
 use crate::protocols::two_party_rsa::CANDIDATE_BIT_LENGTH;
 use crate::protocols::two_party_rsa::PAILLIER_MODULUS;
+use crate::protocols::two_party_rsa::SEC_PARAM;
 use crate::utlities::ddh_proof::DDHProof;
 use crate::utlities::ddh_proof::DDHStatement;
 use crate::utlities::ddh_proof::DDHWitness;
@@ -65,7 +69,6 @@ use zk_paillier::zkproofs::SALT_STRING;
 use zk_paillier::zkproofs::{CiphertextProof, CiphertextStatement};
 use zk_paillier::zkproofs::{MulProof, MulStatement, MulWitness};
 use zk_paillier::zkproofs::{ZeroProof, ZeroStatement, ZeroWitness};
-use crate::protocols::two_party_rsa::SEC_PARAM;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PartyOneKeySetup {
@@ -89,6 +92,27 @@ pub struct PartyOneKeySetupFirstMsg {
 pub struct PartyOnePrivate {
     dk: DecryptionKey,
     sk: ElGamalPrivateKey,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PartyOneCandidateGenerationSemiHonest {}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PartyOneCandidateGenerationFirstMsgSemiHonest {
+    pub c_i: ElGamalCiphertext,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PartyOneCandidateGenerationSecondMsgSemiHonest {
+    pub c_0_alpha: ElGamalCiphertext,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PartyOneCandidateGenerationThirdMsgSemiHonest {
+    pub c_alpha_random: ElGamalCiphertext,
+    pub c_alpha_tilde_random: ElGamalCiphertext,
+    pub partial_dec_c_alpha: BigInt,
+    pub partial_dec_c_alpha_tilde: BigInt,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -239,8 +263,8 @@ impl PartyOneCandidateGeneration {
         PartyOneCandidateWitness,
         PartyOneCandidateGenerationFirstMsg,
     ) {
-        let share_bit_size: usize = CANDIDATE_BIT_LENGTH / 2 - 2;
-        let p_i = BigInt::sample(share_bit_size);
+        let share_bit_size: usize = CANDIDATE_BIT_LENGTH / 2 - 2 ;
+        let p_i = BigInt::sample(share_bit_size );
         let r_i = BigInt::sample_below(&keys.joint_elgamal_pubkey.pp.q);
 
         let c_i = ExponentElGamal::encrypt_from_predefined_randomness(
@@ -268,7 +292,7 @@ impl PartyOneCandidateGeneration {
             range: BigInt::from(2).pow((CANDIDATE_BIT_LENGTH / 2) as u32),
             ciphertext: c_i.clone(),
             sec_param: SEC_PARAM, //TODO : parameterize
-            kapa: 100,      //TODO : parameterize
+            kapa: 100,            //TODO : parameterize
         };
 
         let enc_proof = HomoELGamalProof::prove(&enc_witness, &enc_statement);
@@ -288,7 +312,7 @@ impl PartyOneCandidateGeneration {
         )
     }
 
-    pub fn generate_shares_of_candidate_inject_test(
+    pub fn generate_shares_of_candidate_inject(
         keys: &PartyOneKeySetup,
         prime_share: BigInt,
     ) -> (
@@ -323,7 +347,7 @@ impl PartyOneCandidateGeneration {
             range: BigInt::from(2).pow((CANDIDATE_BIT_LENGTH / 2) as u32),
             ciphertext: c_i.clone(),
             sec_param: SEC_PARAM,
-            kapa: 100,      //TODO : parameterize
+            kapa: 100, //TODO : parameterize
         };
 
         let enc_proof = HomoELGamalProof::prove(&enc_witness, &enc_statement);
@@ -355,7 +379,7 @@ impl PartyOneCandidateGeneration {
 
         let bound_statement = BoundStatement {
             pk: keys.joint_elgamal_pubkey.clone(),
-            range: BigInt::from(2).pow((CANDIDATE_BIT_LENGTH / 2) as u32),
+            range: BigInt::from(2).pow((CANDIDATE_BIT_LENGTH / 2 ) as u32),
             ciphertext: party_two_first_message.c_i.clone(),
             sec_param: SEC_PARAM,
             kapa: 100,
@@ -1133,6 +1157,225 @@ impl PartyOneBiPrimalityTest {
                 }
             }
             false => return Err(TwoPartyRSAError::BiPrimalityTestError),
+        }
+    }
+}
+
+impl PartyOneCandidateGenerationSemiHonest {
+    pub fn generate_shares_of_candidate_semi_honest(
+        keys: &PartyOneKeySetup,
+    ) -> (
+        PartyOneCandidateWitness,
+        PartyOneCandidateGenerationFirstMsgSemiHonest,
+    ) {
+        let share_bit_size: usize = CANDIDATE_BIT_LENGTH / 2 - 2;
+        let p_i = BigInt::sample(share_bit_size);
+        let r_i = BigInt::sample_below(&keys.joint_elgamal_pubkey.pp.q);
+
+        let c_i = ExponentElGamal::encrypt_from_predefined_randomness(
+            &p_i,
+            &keys.joint_elgamal_pubkey,
+            &r_i,
+        )
+        .unwrap();
+
+        (
+            PartyOneCandidateWitness {
+                p_0: p_i,
+                r_0: r_i,
+                r_0_paillier: BigInt::zero(),
+            },
+            PartyOneCandidateGenerationFirstMsgSemiHonest { c_i },
+        )
+    }
+
+    pub fn generate_shares_of_candidate_semi_honest_inject(
+        keys: &PartyOneKeySetup,
+        prime_share: &BigInt,
+    ) -> (
+        PartyOneCandidateWitness,
+        PartyOneCandidateGenerationFirstMsgSemiHonest,
+    ) {
+        let p_i = prime_share;
+        let r_i = BigInt::sample_below(&keys.joint_elgamal_pubkey.pp.q);
+
+        let c_i = ExponentElGamal::encrypt_from_predefined_randomness(
+            p_i,
+            &keys.joint_elgamal_pubkey,
+            &r_i,
+        )
+        .unwrap();
+
+        (
+            PartyOneCandidateWitness {
+                p_0: p_i.clone(),
+                r_0: r_i,
+                r_0_paillier: BigInt::zero(),
+            },
+            PartyOneCandidateGenerationFirstMsgSemiHonest { c_i },
+        )
+    }
+
+    pub fn verify_party_two_first_message_and_normalize_ciphertexts_semi_honest(
+        keys: &PartyOneKeySetup,
+        party_one_first_message: &PartyOneCandidateGenerationFirstMsgSemiHonest,
+        party_two_first_message: &PartyTwoCandidateGenerationFirstMsgSemiHonest,
+    ) -> Result<CiphertextPair, TwoPartyRSAError> {
+        let c_party_one_mul_4 =
+            ExponentElGamal::mul(&party_one_first_message.c_i, &BigInt::from(4));
+        let c_party_two_mul_4 =
+            ExponentElGamal::mul(&party_two_first_message.c_i, &BigInt::from(4));
+        Ok(CiphertextPair {
+            c0: ExponentElGamal::add(
+                &c_party_one_mul_4,
+                &ExponentElGamal::encrypt_from_predefined_randomness(
+                    &BigInt::from(3),
+                    &keys.joint_elgamal_pubkey,
+                    &BigInt::zero(),
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+            c1: c_party_two_mul_4,
+        })
+    }
+
+    pub fn trial_division_prepare_c_alpha_semi_honest(
+        alpha: &BigInt,
+        keys: &PartyOneKeySetup,
+        _c: &CiphertextPair,
+        w: &PartyOneCandidateWitness,
+    ) -> Result<PartyOneCandidateGenerationSecondMsgSemiHonest, TwoPartyRSAError> {
+        // update witness:
+        let p_0 = BigInt::mod_add(
+            &BigInt::mod_mul(&w.p_0, &BigInt::from(4), &keys.joint_elgamal_pubkey.pp.q),
+            &BigInt::from(3),
+            &keys.joint_elgamal_pubkey.pp.q,
+        );
+
+        let p_0_mod_alpha = p_0.mod_floor(alpha);
+        let r_0_alpha = BigInt::sample_below(&keys.joint_elgamal_pubkey.pp.q);
+        let c_0_alpha = ExponentElGamal::encrypt_from_predefined_randomness(
+            &p_0_mod_alpha,
+            &keys.joint_elgamal_pubkey,
+            &r_0_alpha,
+        )
+        .unwrap();
+
+        Ok(PartyOneCandidateGenerationSecondMsgSemiHonest { c_0_alpha })
+    }
+
+    pub fn verify_party_two_second_message_and_partial_decrypt_semi_honest(
+        party_one_second_message: &PartyOneCandidateGenerationSecondMsgSemiHonest,
+        party_two_second_message: &PartyTwoCandidateGenerationSecondMsgSemiHonest,
+        alpha: &BigInt,
+        keys: &PartyOneKeySetup,
+        _c: &CiphertextPair,
+    ) -> Result<
+        (
+            PartyOneCandidateGenerationThirdMsgSemiHonest,
+            ElGamalCiphertext,
+            ElGamalCiphertext,
+        ),
+        TwoPartyRSAError,
+    > {
+        let c_alpha = ExponentElGamal::add(
+            &party_one_second_message.c_0_alpha,
+            &party_two_second_message.c_1_alpha,
+        )
+        .unwrap();
+        // Enc(-alpha) is known to both parties therefore we use a predefined randomness known to both (r = 2)
+        let enc_alpha = ExponentElGamal::encrypt_from_predefined_randomness(
+            alpha,
+            &keys.joint_elgamal_pubkey,
+            &BigInt::from(2),
+        )
+        .unwrap();
+        let enc_minus_alpha = ExponentElGamal::mul(&enc_alpha, &(-BigInt::one()));
+        let c_alpha_tilde = ExponentElGamal::add(&c_alpha, &enc_minus_alpha).unwrap();
+
+        // we raise each ciphertext with a secret random number
+        let r_alpha = BigInt::sample_below(&keys.joint_elgamal_pubkey.pp.q);
+        let r_alpha_tilde = BigInt::sample_below(&keys.joint_elgamal_pubkey.pp.q);
+
+        let c_alpha_random = ExponentElGamal::mul(&c_alpha, &r_alpha);
+        let c_alpha_tilde_random = ExponentElGamal::mul(&c_alpha_tilde, &r_alpha_tilde);
+
+        // we use proof of DDH to prove to counter party that c_alpha_random = c_alpha ^r and same for c_alpha_tilde
+
+        let dec_key_alpha = BigInt::mod_pow(
+            &c_alpha_random.c1,
+            &keys.private.sk.x,
+            &keys.joint_elgamal_pubkey.pp.p,
+        );
+        let dec_key_alpha_tilde = BigInt::mod_pow(
+            &c_alpha_tilde_random.c1,
+            &keys.private.sk.x,
+            &keys.joint_elgamal_pubkey.pp.p,
+        );
+
+        Ok((
+            PartyOneCandidateGenerationThirdMsgSemiHonest {
+                c_alpha_random,
+                c_alpha_tilde_random,
+                partial_dec_c_alpha: dec_key_alpha,
+                partial_dec_c_alpha_tilde: dec_key_alpha_tilde,
+            },
+            c_alpha,
+            c_alpha_tilde,
+        ))
+    }
+
+    pub fn verify_party_two_third_message_full_decrypt_and_conclude_division_semi_honest(
+        _c_alpha: &ElGamalCiphertext,
+        _c_alpha_tilde: &ElGamalCiphertext,
+        party_two_third_message: &PartyTwoCandidateGenerationThirdMsgSemiHonest,
+        keys: &PartyOneKeySetup,
+    ) -> Result<bool, TwoPartyRSAError> {
+        // check that the randomization of the ciphertexts was done properly:
+
+        // full decryption
+        let dec_key_alpha = BigInt::mod_pow(
+            &party_two_third_message.c_alpha_random.c1,
+            &keys.private.sk.x,
+            &keys.joint_elgamal_pubkey.pp.p,
+        );
+        let dec_key_alpha_tilde = BigInt::mod_pow(
+            &party_two_third_message.c_alpha_tilde_random.c1,
+            &keys.private.sk.x,
+            &keys.joint_elgamal_pubkey.pp.p,
+        );
+        let dec_key_alpha_full = BigInt::mod_mul(
+            &dec_key_alpha,
+            &party_two_third_message.partial_dec_c_alpha,
+            &keys.joint_elgamal_pubkey.pp.p,
+        );
+        let dec_key_alpha_tilde_full = BigInt::mod_mul(
+            &dec_key_alpha_tilde,
+            &party_two_third_message.partial_dec_c_alpha_tilde,
+            &keys.joint_elgamal_pubkey.pp.p,
+        );
+
+        let dec_key_alpha_full_inv =
+            BigInt::mod_inv(&dec_key_alpha_full, &keys.joint_elgamal_pubkey.pp.p);
+        let dec_key_alpha_tilde_full_inv =
+            BigInt::mod_inv(&dec_key_alpha_tilde_full, &keys.joint_elgamal_pubkey.pp.p);
+
+        let test1 = BigInt::mod_mul(
+            &party_two_third_message.c_alpha_random.c2,
+            &dec_key_alpha_full_inv,
+            &keys.joint_elgamal_pubkey.pp.p,
+        );
+        let test2 = BigInt::mod_mul(
+            &party_two_third_message.c_alpha_tilde_random.c2,
+            &dec_key_alpha_tilde_full_inv,
+            &keys.joint_elgamal_pubkey.pp.p,
+        );
+
+        if test1 == BigInt::one() || test2 == BigInt::one() {
+            Ok(false)
+        } else {
+            Ok(true)
         }
     }
 }
