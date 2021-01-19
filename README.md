@@ -16,4 +16,4 @@ Distributed RSA modulus makes sure that no single party knows the order of the R
 
 
 ## Contact
-Feel free to [reach out](mailto:omer@kzencorp.com) or join ZenGo X [Telegram](https://t.me/zengo_x) for discussions on code and research.
+Feel free to [reach out](mailto:omer@kzencorp.com) or join ZenGo X [Telegram](https://t.me/joinchat/ET1mddGXRoyCxZ-7) for discussions on code and research.
