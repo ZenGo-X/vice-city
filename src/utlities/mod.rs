@@ -1,6 +1,8 @@
 use curv::arithmetic::traits::Modulo;
-use curv::cryptographic_primitives::hashing::hash_sha256::HSha256;
-use curv::cryptographic_primitives::hashing::traits::Hash;
+//use curv::cryptographic_primitives::hashing::hash_sha256::HSha256;
+use sha2::Sha256;
+//use curv::cryptographic_primitives::hashing::traits::Hash;
+use curv::cryptographic_primitives::hashing::{Digest, DigestExt};
 use curv::BigInt;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
@@ -12,6 +14,7 @@ pub mod equal_secret_proof;
 pub mod mod_proof;
 pub mod multiplication_proof;
 pub mod range_proof;
+use curv::arithmetic::traits::{Converter, Samplable};
 
 pub mod equal_secret_proof_tn;
 
@@ -21,12 +24,29 @@ pub mod inner_product_refined;
 
 pub mod verlin_proof;
 pub const HASH_OUTPUT_BIT_SIZE: usize = 256;
+use curv::arithmetic::{One, Zero, Integer};
+use curv::arithmetic::BitManipulation;
+
+use std::convert::From;
+
+use hex::decode;
+
+pub fn create_hash(big_ints: &[&BigInt]) -> BigInt {
+    let mut hasher = Sha256::new();
+    for value in big_ints {
+        hasher.update(value.to_bytes());
+    }
+    //let result_string = hasher.finalize();
+    //let result_bytes = decode(result_string).unwrap();
+    let result_bytes = hasher.finalize();
+    BigInt::from_bytes(&result_bytes[..])
+}
 
 // This function implements H: {0,1}* -> Z_q
 pub fn hash(input: &[&BigInt], q: &BigInt, hash_output_bitlen: usize) -> BigInt {
-    let mut res = HSha256::create_hash(input);
+    let mut res = create_hash(input);
     while res.bit_length() < 2 * q.bit_length() {
-        res = (&res << hash_output_bitlen) + HSha256::create_hash(&[&res]);
+        res = (&res << hash_output_bitlen) + create_hash(&[&res]);
     }
     res.modulus(&q)
 }
@@ -410,6 +430,8 @@ mod tests {
     use curv::arithmetic::traits::Samplable;
     use curv::BigInt;
     use elgamal::prime::is_prime;
+     use curv::arithmetic::One;
+     use curv::arithmetic::Modulo;
 
     #[test]
     fn test_pow_2048_bit() {

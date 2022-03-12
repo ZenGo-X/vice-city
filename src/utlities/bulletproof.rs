@@ -17,12 +17,17 @@ use crate::utlities::hash;
 use crate::utlities::inner_product_refined::*;
 use crate::BulletproofError::{self, BPRangeProofError};
 use curv::arithmetic::traits::{Modulo, Samplable};
-use curv::cryptographic_primitives::hashing::hash_sha256::HSha256;
-use curv::cryptographic_primitives::hashing::traits::*;
+
 use curv::BigInt;
+use curv::arithmetic::One;
+use curv::arithmetic::Zero;
+use curv::arithmetic::BasicOps;
+
 use elgamal::ElGamalPP;
 use itertools::iterate;
 use std::ops::{Shl, Shr};
+
+use crate::utlities::create_hash;
 
 const HASH_OUTPUT_BIT_SIZE: usize = 256;
 
@@ -230,7 +235,7 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
 
         let hi_tag = (0..nm)
             .map(|i| {
-                let yi_inv = BigInt::mod_inv(&y_powers[i], &q);
+                let yi_inv = BigInt::mod_inv(&y_powers[i], &q).unwrap();
                 BigInt::mod_pow(&h_vec[i], &yi_inv, &p)
             })
             .collect::<Vec<BigInt>>();
@@ -334,7 +339,7 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
         // compute modified generator vector hi_tag
         let hi_tag = (0..nm)
             .map(|i| {
-                let yi_inv = BigInt::mod_inv(&y_powers[i], &q);
+                let yi_inv = BigInt::mod_inv(&y_powers[i], &q).unwrap();
                 BigInt::mod_pow(&h_vec[i], &yi_inv, &p)
             })
             .collect::<Vec<BigInt>>();
@@ -452,13 +457,13 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
             &pp.q,
             HASH_OUTPUT_BIT_SIZE,
         );
-        let y_inv = BigInt::mod_inv(&y, &q);
+        let y_inv = BigInt::mod_inv(&y, &q).unwrap();
         // let z_minus = BigInt::mod_sub(&q, &z, &q);
         let z_sq = BigInt::mod_mul(&z, &z, &q);
         let xx_sq = BigInt::mod_mul(&xx, &xx, &q);
 
         // generate a random scalar to combine 2 verification equations
-        let c = HSha256::create_hash(&[&self.A, &self.S, &self.T1, &self.T2, &u]);
+        let c = create_hash(&[&self.A, &self.S, &self.T1, &self.T2, &u]);
 
         // z2_vec = (z^2, z^3, z^4, ..., z^{m+1})
         let z2_vec = iterate(z_sq.clone(), |i| BigInt::mod_mul(&i, &z, &q))
@@ -552,7 +557,7 @@ impl BPRangeProof<RangeProof, BPWitness, BPStatement, ElGamalPP> for RangeProof 
 
         let b_times_sinv: Vec<BigInt> = (0..nm)
             .map(|i| {
-                let s_inv_i = BigInt::mod_inv(&s[i], &q);
+                let s_inv_i = BigInt::mod_inv(&s[i], &q).unwrap();
                 BigInt::mod_mul(&s_inv_i, &self.inner_product_proof.b_tag, &q)
             })
             .collect();

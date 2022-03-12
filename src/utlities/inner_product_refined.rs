@@ -18,6 +18,8 @@ use crate::BulletproofError::{self, InnerProductError};
 use curv::arithmetic::traits::Modulo;
 use curv::BigInt;
 use elgamal::ElGamalPP;
+use curv::arithmetic::One;
+use curv::arithmetic::Zero;
 
 const HASH_OUTPUT_BIT_SIZE: usize = 256;
 
@@ -116,7 +118,7 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt, ElGamalPP> for I
 
             // generate challenge
             let x = hash(&[&L, &R, &u], &pp.q, HASH_OUTPUT_BIT_SIZE);
-            let x_inv = BigInt::mod_inv(&x, &order_f);
+            let x_inv = BigInt::mod_inv(&x, &order_f).unwrap();
 
             // push L, R
             L_vec.push(L);
@@ -199,7 +201,7 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt, ElGamalPP> for I
 
             // generate challenge
             let x = hash(&[&self.L[0], &self.R[0], &u], &pp.q, HASH_OUTPUT_BIT_SIZE);
-            let x_inv = BigInt::mod_inv(&x, &order_f);
+            let x_inv = BigInt::mod_inv(&x, &order_f).unwrap();
             let x_sq = BigInt::mod_mul(&x, &x, &order_f);
             let x_inv_sq = BigInt::mod_mul(&x_inv, &x_inv, &order_f);
 
@@ -318,7 +320,7 @@ impl InnerProductProof<IPProof, IPWitness, IPStatement, BigInt, ElGamalPP> for I
 
         let b_div_s: Vec<BigInt> = (0..n)
             .map(|i| {
-                let s_inv_i = BigInt::mod_inv(&s[i], &order_f);
+                let s_inv_i = BigInt::mod_inv(&s[i], &order_f).unwrap();
                 BigInt::mod_mul(&s_inv_i, &self.b_tag, &order_f)
             })
             .collect();
@@ -455,7 +457,7 @@ pub fn batch_invert(scalars: &mut Vec<BigInt>, pp: &ElGamalPP, in_group: bool) -
         prefix_prod.push(BigInt::mod_mul(&prefix_prod[i - 1], &scalars[i], &order));
     }
 
-    let allinv = BigInt::mod_inv(&prefix_prod[n - 1], &order);
+    let allinv = BigInt::mod_inv(&prefix_prod[n - 1], &order).unwrap();
     prefix_prod[n - 1] = allinv.clone();
 
     for i in 1..n {
@@ -602,7 +604,7 @@ mod tests {
         let n = 64;
         let mut scalars: Vec<BigInt> = (0..n).map(|_| BigInt::sample_below(&order)).collect();
         let expected: Vec<BigInt> = (0..n)
-            .map(|i| BigInt::mod_inv(&scalars[i], &order))
+            .map(|i| BigInt::mod_inv(&scalars[i], &order).unwrap())
             .collect();
         let _allinv = batch_invert(&mut scalars, &params, true);
         assert_eq!(expected, scalars);

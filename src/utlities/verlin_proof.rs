@@ -1,5 +1,6 @@
 use curv::arithmetic::traits::Samplable;
 use curv::BigInt;
+use curv::arithmetic::Modulo;
 
 use crate::utlities::hash;
 use crate::utlities::HASH_OUTPUT_BIT_SIZE;

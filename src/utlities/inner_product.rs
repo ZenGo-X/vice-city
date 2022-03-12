@@ -15,9 +15,10 @@ Copyright information here.
 // use crate::protocols::bulletproofs::Group;
 use crate::BulletproofError::{self, InnerProductError};
 use curv::arithmetic::traits::Modulo;
-use curv::cryptographic_primitives::hashing::hash_sha256::HSha256;
-use curv::cryptographic_primitives::hashing::traits::*;
+use crate::utlities::create_hash;
 use curv::BigInt;
+use curv::arithmetic::One;
+use curv::arithmetic::Zero;
 use elgamal::ElGamalPP;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -97,9 +98,9 @@ impl InnerProductArg {
             R_vec.push(R.clone());
 
             // generate challenge
-            let x = HSha256::create_hash(&[&L.g, &R.g, &ux.g]); //TODO: challenge should be of size |q|
+            let x = create_hash(&[&L.g, &R.g, &ux.g]); //TODO: challenge should be of size |q|
             let x = x.modulus(&order);
-            let x_inv = BigInt::mod_inv(&x, &order);
+            let x_inv = BigInt::mod_inv(&x, &order).unwrap();
 
             // update secret vectors for next round
             let a_new = (0..n)
@@ -189,10 +190,10 @@ impl InnerProductArg {
             let (H_L, H_R) = H.split_at(n);
 
             // generate challenge
-            let x = HSha256::create_hash(&[&self.L[0].g, &self.R[0].g, &ux.g]);
+            let x = create_hash(&[&self.L[0].g, &self.R[0].g, &ux.g]);
             let x = x.modulus(&order);
 
-            let x_inv = BigInt::mod_inv(&x, &order);
+            let x_inv = BigInt::mod_inv(&x, &order).unwrap();
             let x_sq = BigInt::mod_mul(&x, &x, &order);
             let x_inv_sq = BigInt::mod_mul(&x_inv, &x_inv, &order);
 
@@ -298,10 +299,10 @@ impl InnerProductArg {
         let mut minus_x_inv_sq_vec: Vec<BigInt> = Vec::with_capacity(lg_n);
         let mut allinv = BigInt::one();
         for (Li, Ri) in self.L.iter().zip(self.R.iter()) {
-            let x = HSha256::create_hash(&[&Li.g, &Ri.g, &ux.g]);
+            let x = create_hash(&[&Li.g, &Ri.g, &ux.g]);
             let x = x.modulus(&order);
 
-            let x_inv = BigInt::mod_inv(&x, &order);
+            let x_inv = BigInt::mod_inv(&x, &order).unwrap();
             let x_sq = BigInt::mod_pow(&x, &BigInt::from(2), &order);
             let x_inv_sq = BigInt::mod_pow(&x_inv, &BigInt::from(2), &order);
 
@@ -330,7 +331,7 @@ impl InnerProductArg {
 
         let b_div_s: Vec<BigInt> = (0..n)
             .map(|i| {
-                let s_inv_i = BigInt::mod_inv(&s[i], &order);
+                let s_inv_i = BigInt::mod_inv(&s[i], &order).unwrap();
                 BigInt::mod_mul(&s_inv_i, &self.b_tag.x, &order)
             })
             .collect();

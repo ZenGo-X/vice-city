@@ -2,13 +2,16 @@ use crate::utlities::TN;
 use crate::ProofError;
 use bit_vec::BitVec;
 use curv::arithmetic::traits::{Converter, Samplable};
-use curv::cryptographic_primitives::hashing::hash_sha256::HSha256;
-use curv::cryptographic_primitives::hashing::traits::Hash;
 use curv::BigInt;
+use curv::arithmetic::Modulo;
+use curv::arithmetic::One;
+use curv::arithmetic::traits::BitManipulation;
 use elgamal::ElGamalCiphertext;
 use elgamal::ElGamalPublicKey;
 use elgamal::ExponentElGamal;
 use rayon::prelude::*;
+
+use crate::utlities::create_hash;
 
 /// This is a non-interactive version of the protocol \pi_eq
 /// from https://eprint.iacr.org/2011/494.pdf page 12 point 5.  The witness is {x,r}, the
@@ -92,8 +95,8 @@ impl EqProofTN {
             fs_input.push(&h_prime_i_vec[i].a);
             fs_input.push(&ciphertext_i_vec[i].c2);
         }
-        let e = HSha256::create_hash(&fs_input);
-        let e_bytes_vec = BigInt::to_vec(&e);
+        let e = create_hash(&fs_input);
+        let e_bytes_vec = BigInt::to_bytes(&e);
         let bits_of_e = BitVec::from_bytes(&e_bytes_vec[..]);
 
         let response_vec: Vec<_> = (0..statement.sec_param)
@@ -123,8 +126,8 @@ impl EqProofTN {
             fs_input.push(&self.h_prime_i_vec[i].a);
             fs_input.push(&self.ciphertext_i_vec[i].c2);
         }
-        let e = HSha256::create_hash(&fs_input);
-        let e_bytes_vec = BigInt::to_vec(&e);
+        let e = create_hash(&fs_input);
+        let e_bytes_vec = BigInt::to_bytes(&e);
         let bits_of_e = BitVec::from_bytes(&e_bytes_vec[..]);
 
         let checks: Vec<_> = (0..statement.sec_param)
@@ -179,6 +182,8 @@ mod tests {
     use elgamal::ElGamalKeyPair;
     use elgamal::ElGamalPP;
     use elgamal::ExponentElGamal;
+    use curv::arithmetic::{One, Zero, Integer, BasicOps};
+    use curv::arithmetic::BitManipulation;
 
     #[test]
     fn test_correct_eq_elgamal() {

@@ -11,6 +11,8 @@ use crate::protocols::two_party_rsa::hmrt::party_two::PartyTwoKeySetup;
 use crate::utlities::SMALL_PRIMES;
 use curv::BigInt;
 use elgamal::prime::is_prime;
+use curv::arithmetic::{Zero, One, Integer};
+use curv::arithmetic::Converter;
 
 const B: usize = 10;
 const L: usize = 2;

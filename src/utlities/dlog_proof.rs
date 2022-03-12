@@ -82,6 +82,9 @@ mod tests {
     use elgamal::rfc7919_groups::SupportedGroups;
     use elgamal::ElGamalKeyPair;
     use elgamal::ElGamalPP;
+    use curv::arithmetic::{Zero, One, Integer};
+    use curv::arithmetic::Converter;
+    use curv::arithmetic::BitManipulation;
 
     #[test]
     fn test_dlog_proof() {

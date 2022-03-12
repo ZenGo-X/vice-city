@@ -3,6 +3,7 @@ use crate::utlities::HASH_OUTPUT_BIT_SIZE;
 use crate::ProofError;
 use curv::arithmetic::traits::{Modulo, Samplable};
 use curv::BigInt;
+use curv::arithmetic::{One, Zero};
 use elgamal::ElGamalCiphertext;
 use elgamal::ElGamalPublicKey;
 use elgamal::ExponentElGamal;
@@ -138,6 +139,7 @@ impl MulProofElGamal {
 mod tests {
     use curv::arithmetic::traits::{Modulo, Samplable};
     use curv::BigInt;
+    use curv::arithmetic::One;
 
     use crate::utlities::multiplication_proof::MulProofElGamal;
     use crate::utlities::multiplication_proof::MulStatementElGamal;

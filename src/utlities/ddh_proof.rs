@@ -96,6 +96,8 @@ mod tests {
     use elgamal::ElGamalKeyPair;
     use elgamal::ElGamalPP;
     use elgamal::ExponentElGamal;
+    use curv::arithmetic::{Zero, One, Integer};
+    use curv::arithmetic::Converter;
 
     #[test]
     fn test_ddh_proof() {

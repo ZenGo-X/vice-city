@@ -3,7 +3,14 @@ use crate::utlities::range_proof::Statement as RangeStatement;
 use crate::utlities::range_proof::Witness as RangeWitness;
 use crate::ProofError;
 use curv::arithmetic::traits::Modulo;
+use curv::arithmetic::traits::{Converter, Samplable};
 use curv::BigInt;
+use curv::arithmetic::Integer;
+use curv::arithmetic::Zero;
+use curv::arithmetic::One;
+
+use std::convert::{TryFrom, TryInto};
+
 use elgamal::ElGamalCiphertext;
 use elgamal::ElGamalPublicKey;
 use elgamal::ExponentElGamal;
@@ -45,7 +52,7 @@ impl ModProof {
     pub fn prove(witness: &ModWitness, statement: &ModStatement) -> Result<Self, ProofError> {
         let minus_c_prime = ExponentElGamal::mul(&statement.c_prime, &-BigInt::one());
         let c_minus_c_prime = ExponentElGamal::add(&statement.c, &minus_c_prime).unwrap();
-        let p_inv = statement.modulus_p.invert(&statement.pk.pp.q);
+        let p_inv = BigInt::mod_inv(&statement.modulus_p, &statement.pk.pp.q);
         if p_inv.is_none() {
             return Err(ProofError::ModProofError);
         }
@@ -112,7 +119,7 @@ impl ModProof {
 
         let minus_c_prime = ExponentElGamal::mul(&statement.c_prime, &-BigInt::one());
         let c_minus_c_prime = ExponentElGamal::add(&statement.c, &minus_c_prime).unwrap();
-        let p_inv = statement.modulus_p.invert(&statement.pk.pp.q);
+        let p_inv = BigInt::mod_inv(&statement.modulus_p, &statement.pk.pp.q);
         if p_inv.is_none() {
             return Err(ProofError::ModProofError);
         }
@@ -155,6 +162,8 @@ mod tests {
     use elgamal::ElGamalKeyPair;
     use elgamal::ElGamalPP;
     use elgamal::ExponentElGamal;
+    use curv::arithmetic::{One, Zero, Integer, BasicOps};
+    use curv::arithmetic::BitManipulation;
 
     #[test]
     pub fn test_mod_proof() {

@@ -46,6 +46,10 @@ use crate::TwoPartyRSAError;
 use curv::arithmetic::traits::Modulo;
 use curv::arithmetic::traits::Samplable;
 use curv::BigInt;
+use curv::elliptic::curves::{Scalar};
+use curv::arithmetic::{One, Zero, Integer};
+use curv::arithmetic::traits::Converter;
+use curv::arithmetic::BasicOps;
 use elgamal::rfc7919_groups::SupportedGroups;
 use elgamal::ElGamalCiphertext;
 use elgamal::ElGamalKeyPair;
@@ -63,7 +67,7 @@ use paillier::Open;
 use paillier::Paillier;
 use paillier::{RawCiphertext, RawPlaintext};
 use zk_paillier::zkproofs::CiphertextWitness;
-use zk_paillier::zkproofs::NICorrectKeyProof;
+use zk_paillier::zkproofs::NiCorrectKeyProof;
 use zk_paillier::zkproofs::VerlinStatement;
 use zk_paillier::zkproofs::SALT_STRING;
 use zk_paillier::zkproofs::{CiphertextProof, CiphertextStatement};
@@ -84,7 +88,7 @@ pub struct PartyOneKeySetup {
 pub struct PartyOneKeySetupFirstMsg {
     pub ek: EncryptionKey,
     pub pk: ElGamalPublicKey,
-    pub correct_key_proof: NICorrectKeyProof,
+    pub correct_key_proof: NiCorrectKeyProof,
     pub dlog_proof: DLogProof,
 }
 
@@ -202,7 +206,7 @@ impl PartyOneKeySetup {
         let dlog_proof = DLogProof::prove(&witness, &pp);
 
         let (ek_new, dk_new) = Paillier::keypair_with_modulus_size(PAILLIER_MODULUS).keys();
-        let correct_key_proof = NICorrectKeyProof::proof(&dk_new, None);
+        let correct_key_proof = NiCorrectKeyProof::proof(&dk_new, None);
 
         let party_one_private = PartyOnePrivate {
             dk: dk_new,
@@ -675,9 +679,9 @@ impl PartyOneCandidateGeneration {
         );
 
         let dec_key_alpha_full_inv =
-            BigInt::mod_inv(&dec_key_alpha_full, &keys.joint_elgamal_pubkey.pp.p);
+            BigInt::mod_inv(&dec_key_alpha_full, &keys.joint_elgamal_pubkey.pp.p).unwrap();
         let dec_key_alpha_tilde_full_inv =
-            BigInt::mod_inv(&dec_key_alpha_tilde_full, &keys.joint_elgamal_pubkey.pp.p);
+            BigInt::mod_inv(&dec_key_alpha_tilde_full, &keys.joint_elgamal_pubkey.pp.p).unwrap();
 
         let test1 = BigInt::mod_mul(
             &party_two_third_message.c_alpha_random.c2,
@@ -744,8 +748,8 @@ impl PartyOneComputeProduct {
             c: c_q.clone(),
         };
 
-        let c_p_proof = CiphertextProof::prove(&witness_c_p, &statement_c_p).unwrap();
-        let c_q_proof = CiphertextProof::prove(&witness_c_q, &statement_c_q).unwrap();
+        let c_p_proof = CiphertextProof::prove(&witness_c_p, &statement_c_p);
+        let c_q_proof = CiphertextProof::prove(&witness_c_q, &statement_c_q);
 
         PartyOneComputeProductFirstMsg {
             c_p,
@@ -808,10 +812,10 @@ impl PartyOneComputeProduct {
             e_b: party_one_first_message.c_q.clone(),
             e_c: c_pi.clone(),
         };
-        let mul_proof = MulProof::prove(&mult_witness, &mult_statement).unwrap();
+        let mul_proof = MulProof::prove(&mult_witness, &mult_statement);
 
         let r_n_tilde = BigInt::sample_below(&keys.local_paillier_pubkey.n);
-        let r_n_tilde_inv = r_n_tilde.invert(&keys.local_paillier_pubkey.nn).unwrap();
+        let r_n_tilde_inv = BigInt::mod_inv(&r_n_tilde, &keys.local_paillier_pubkey.nn).unwrap();
         let c_n_tilde = Paillier::encrypt_with_chosen_randomness(
             &keys.local_paillier_pubkey,
             RawPlaintext::from(n_tilde.clone()),
@@ -819,7 +823,7 @@ impl PartyOneComputeProduct {
         )
         .0
         .into_owned();
-        let c_n_tilde_inv = c_n_tilde.invert(&keys.local_paillier_pubkey.nn).unwrap();
+        let c_n_tilde_inv = BigInt::mod_inv(&c_n_tilde, &keys.local_paillier_pubkey.nn).unwrap();
         let c_n_p0_q0_c_pi = Paillier::add(
             &keys.local_paillier_pubkey,
             RawCiphertext::from(&party_two_first_message.c_n_p0_q0.clone()),
@@ -845,7 +849,7 @@ impl PartyOneComputeProduct {
             c: c_0,
         };
 
-        let zero_proof = ZeroProof::prove(&zero_witness, &zero_statement).unwrap();
+        let zero_proof = ZeroProof::prove(&zero_witness, &zero_statement);
         return Ok(PartyOneComputeProductSecondMsg {
             zero_proof,
             mul_proof,
@@ -969,7 +973,7 @@ impl PartyOneComputeProduct {
                     &party_two_ep_first_message.c_n_1_sk2,
                     &keys.joint_elgamal_pubkey.pp.p,
                 );
-                let key_inv = BigInt::mod_inv(&key, &keys.joint_elgamal_pubkey.pp.p);
+                let key_inv = BigInt::mod_inv(&key, &keys.joint_elgamal_pubkey.pp.p).unwrap();
                 let g_n = BigInt::mod_mul(&key_inv, &c_n.c2, &keys.joint_elgamal_pubkey.pp.p);
                 let g_n_tilde = BigInt::mod_pow(
                     &keys.joint_elgamal_pubkey.pp.g,
@@ -1022,7 +1026,7 @@ impl PartyOneBiPrimalityTest {
         .unwrap();
         let c_n_minus_p0_plus_q0_plus_one =
             ExponentElGamal::add(&c_n_plus_one, &c_minus_p0_plus_q0).unwrap();
-        let four_inv = four.invert(&keys.joint_elgamal_pubkey.pp.q).unwrap();
+        let four_inv = BigInt::mod_inv(&four, &keys.joint_elgamal_pubkey.pp.q).unwrap();
         let e_0 = ExponentElGamal::mul(&c_n_minus_p0_plus_q0_plus_one, &four_inv);
 
         let r_e_0_four: BigInt = BigInt::mod_add(
@@ -1112,7 +1116,7 @@ impl PartyOneBiPrimalityTest {
         )
         .unwrap();
         let c_minus_p1_plus_q1 = ExponentElGamal::mul(&c_p1_plus_q1, &(-BigInt::one()));
-        let four_inv = four.invert(&keys.joint_elgamal_pubkey.pp.q).unwrap();
+        let four_inv = BigInt::mod_inv(&four, &keys.joint_elgamal_pubkey.pp.q).unwrap();
         let e_1 = ExponentElGamal::mul(&c_minus_p1_plus_q1, &four_inv);
 
         let gamma_eq_statement = EqStatement {
@@ -1357,9 +1361,9 @@ impl PartyOneCandidateGenerationSemiHonest {
         );
 
         let dec_key_alpha_full_inv =
-            BigInt::mod_inv(&dec_key_alpha_full, &keys.joint_elgamal_pubkey.pp.p);
+            BigInt::mod_inv(&dec_key_alpha_full, &keys.joint_elgamal_pubkey.pp.p).unwrap();
         let dec_key_alpha_tilde_full_inv =
-            BigInt::mod_inv(&dec_key_alpha_tilde_full, &keys.joint_elgamal_pubkey.pp.p);
+            BigInt::mod_inv(&dec_key_alpha_tilde_full, &keys.joint_elgamal_pubkey.pp.p).unwrap();
 
         let test1 = BigInt::mod_mul(
             &party_two_third_message.c_alpha_random.c2,

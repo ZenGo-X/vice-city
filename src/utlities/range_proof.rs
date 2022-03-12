@@ -1,9 +1,10 @@
 use crate::ProofError;
 use bit_vec::BitVec;
 use curv::arithmetic::traits::{Converter, Modulo, Samplable};
-use curv::cryptographic_primitives::hashing::hash_sha256::HSha256;
-use curv::cryptographic_primitives::hashing::traits::Hash;
 use curv::BigInt;
+use curv::arithmetic::traits::BitManipulation;
+use curv::arithmetic::Integer;
+
 use elgamal::ElGamalCiphertext;
 use elgamal::ElGamalPublicKey;
 use elgamal::ExponentElGamal;
@@ -11,6 +12,7 @@ use rand::prelude::*;
 use rayon::prelude::*;
 use std::mem;
 
+use crate::utlities::create_hash;
 /// This range proof is adaptation of the range proof given in
 /// [https://eprint.iacr.org/2017/552.pdf] appendix A, based on the proof by Boudot in
 /// [https://www.iacr.org/archive/eurocrypt2000/1807/18070437-new.pdf]
@@ -126,8 +128,8 @@ impl RangeProof {
             fs_input.push(&c1_vec[i].c1);
             fs_input.push(&c2_vec[i].c1);
         }
-        let e = HSha256::create_hash(&fs_input);
-        let e_bytes_vec = BigInt::to_vec(&e);
+        let e = create_hash(&fs_input);
+        let e_bytes_vec = BigInt::to_bytes(&e);
         let bits_of_e = BitVec::from_bytes(&e_bytes_vec[..]);
 
         let encrypted_pairs = EncryptedPairs {
@@ -183,8 +185,8 @@ impl RangeProof {
             fs_input.push(&self.encrypted_pairs.c1[i].c1);
             fs_input.push(&self.encrypted_pairs.c2[i].c1);
         }
-        let e = HSha256::create_hash(&fs_input);
-        let e_bytes_vec = BigInt::to_vec(&e);
+        let e = create_hash(&fs_input);
+        let e_bytes_vec = BigInt::to_bytes(&e);
         let bits_of_e = BitVec::from_bytes(&e_bytes_vec[..]);
 
         let verifications: Vec<bool> = (0..statement.sec_param)
@@ -282,6 +284,7 @@ mod tests {
     use crate::utlities::range_proof::Statement;
     use crate::utlities::range_proof::Witness;
     use curv::arithmetic::traits::Samplable;
+    use curv::arithmetic::BasicOps;
     use curv::BigInt;
     use elgamal::rfc7919_groups::SupportedGroups;
     use elgamal::ElGamalKeyPair;

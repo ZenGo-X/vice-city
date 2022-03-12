@@ -12,6 +12,7 @@ use crate::utlities::SMALL_PRIMES;
 use curv::arithmetic::traits::Samplable;
 use curv::BigInt;
 use elgamal::prime::is_prime;
+use curv::arithmetic::{One, Zero, Integer};
 
 #[test]
 fn test_simulate_key_setup() {
