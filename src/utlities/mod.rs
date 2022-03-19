@@ -31,6 +31,16 @@ use std::convert::From;
 
 use hex::decode;
 
+use elgamal::ElGamalCiphertext;
+// homomorphically multiply m by a known constant, TODO: this is tricky @eigmax
+pub fn mul_neg_one(c: &ElGamalCiphertext) -> ElGamalCiphertext {
+    ElGamalCiphertext {
+        c1: BigInt::mod_inv(&c.c1, &c.pp.p).unwrap(),
+        c2: BigInt::mod_inv(&c.c2, &c.pp.p).unwrap(),
+        pp: c.pp.clone(),
+    }
+}
+
 pub fn create_hash(big_ints: &[&BigInt]) -> BigInt {
     let mut hasher = Sha256::new();
     for value in big_ints {

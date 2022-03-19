@@ -124,7 +124,8 @@ impl MulProofElGamal {
         let e_a_e_e_d = ExponentElGamal::add(&e_a_e, &self.e_d).unwrap();
         let e_c_e = ExponentElGamal::mul(&statement.e_c, &e);
         let e_db_e_c_e = ExponentElGamal::add(&self.e_db, &e_c_e).unwrap();
-        let e_db_e_c_e_inv = ExponentElGamal::mul(&e_db_e_c_e, &-BigInt::one());
+        //let e_db_e_c_e_inv = ExponentElGamal::mul(&e_db_e_c_e, &-BigInt::one());
+        let e_db_e_c_e_inv = super::mul_neg_one(&e_db_e_c_e);
         let e_b_f = ExponentElGamal::mul(&statement.e_b, &self.f);
         let e_b_f_e_db_e_c_e_inv = ExponentElGamal::add(&e_b_f, &e_db_e_c_e_inv).unwrap();
 

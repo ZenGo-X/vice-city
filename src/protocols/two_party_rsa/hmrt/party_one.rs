@@ -46,7 +46,6 @@ use crate::TwoPartyRSAError;
 use curv::arithmetic::traits::Modulo;
 use curv::arithmetic::traits::Samplable;
 use curv::BigInt;
-use curv::elliptic::curves::{Scalar};
 use curv::arithmetic::{One, Zero, Integer};
 use curv::arithmetic::traits::Converter;
 use curv::arithmetic::BasicOps;
@@ -507,7 +506,8 @@ impl PartyOneCandidateGeneration {
             &BigInt::from(2),
         )
         .unwrap();
-        let enc_minus_alpha = ExponentElGamal::mul(&enc_alpha, &(-BigInt::one()));
+        //let enc_minus_alpha = ExponentElGamal::mul(&enc_alpha, &(-BigInt::one()));
+        let enc_minus_alpha = crate::utlities::mul_neg_one(&enc_alpha);
         let c_alpha_tilde = ExponentElGamal::add(&c_alpha, &enc_minus_alpha).unwrap();
 
         // we raise each ciphertext with a secret random number
@@ -1016,7 +1016,8 @@ impl PartyOneBiPrimalityTest {
             &ciphertext_pair_q_candidate.c0,
         )
         .unwrap();
-        let c_minus_p0_plus_q0 = ExponentElGamal::mul(&c_p0_plus_q0, &(-BigInt::one()));
+        //let c_minus_p0_plus_q0 = ExponentElGamal::mul(&c_p0_plus_q0, &(-BigInt::one()));
+        let c_minus_p0_plus_q0 = crate::utlities::mul_neg_one(&c_p0_plus_q0);
         // we use a fixed randomness
         let c_n_plus_one = ExponentElGamal::encrypt_from_predefined_randomness(
             &((n + BigInt::one()).modulus(&keys.joint_elgamal_pubkey.pp.q)),
@@ -1115,7 +1116,8 @@ impl PartyOneBiPrimalityTest {
             &ciphertext_pair_q_candidate.c1,
         )
         .unwrap();
-        let c_minus_p1_plus_q1 = ExponentElGamal::mul(&c_p1_plus_q1, &(-BigInt::one()));
+        //let c_minus_p1_plus_q1 = ExponentElGamal::mul(&c_p1_plus_q1, &(-BigInt::one()));
+        let c_minus_p1_plus_q1 = crate::utlities::mul_neg_one(&c_p1_plus_q1);
         let four_inv = BigInt::mod_inv(&four, &keys.joint_elgamal_pubkey.pp.q).unwrap();
         let e_1 = ExponentElGamal::mul(&c_minus_p1_plus_q1, &four_inv);
 
@@ -1295,7 +1297,8 @@ impl PartyOneCandidateGenerationSemiHonest {
             &BigInt::from(2),
         )
         .unwrap();
-        let enc_minus_alpha = ExponentElGamal::mul(&enc_alpha, &(-BigInt::one()));
+        //let enc_minus_alpha = ExponentElGamal::mul(&enc_alpha, &(-BigInt::one()));
+        let enc_minus_alpha = crate::utlities::mul_neg_one(&enc_alpha);
         let c_alpha_tilde = ExponentElGamal::add(&c_alpha, &enc_minus_alpha).unwrap();
 
         // we raise each ciphertext with a secret random number

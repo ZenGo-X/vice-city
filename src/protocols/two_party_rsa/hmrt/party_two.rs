@@ -480,7 +480,8 @@ impl PartyTwoCandidateGeneration {
             &BigInt::from(2),
         )
         .unwrap();
-        let enc_minus_alpha = ExponentElGamal::mul(&enc_alpha, &(-BigInt::one()));
+        //let enc_minus_alpha = ExponentElGamal::mul(&enc_alpha, &(-BigInt::one()));
+        let enc_minus_alpha = crate::utlities::mul_neg_one(&enc_alpha);
         let c_alpha_tilde = ExponentElGamal::add(&c_alpha, &enc_minus_alpha).unwrap();
 
         // we raise each ciphertext with a secret random number
@@ -961,7 +962,8 @@ impl PartyTwoBiPrimalityTest {
             &ciphertext_pair_q_candidate.c1,
         )
         .unwrap();
-        let c_minus_p1_plus_q1 = ExponentElGamal::mul(&c_p1_plus_q1, &(-BigInt::one()));
+        //let c_minus_p1_plus_q1 = ExponentElGamal::mul(&c_p1_plus_q1, &(-BigInt::one()));
+        let c_minus_p1_plus_q1 = crate::utlities::mul_neg_one(&c_p1_plus_q1);
 
         let four_inv = BigInt::mod_inv(&four, &keys.joint_elgamal_pubkey.pp.q).unwrap();
         let e_1 = ExponentElGamal::mul(&c_minus_p1_plus_q1, &four_inv);
@@ -976,7 +978,10 @@ impl PartyTwoBiPrimalityTest {
             &keys.joint_elgamal_pubkey.pp.q,
         );
         let minus_p1_plus_q1_div_four: BigInt = (-(&p.p_1 + &q.p_1)).div_floor(&four);
-        let gamma_1 = BigInt::mod_pow(&gamma, &minus_p1_plus_q1_div_four, n);
+        //let gamma_1 = BigInt::mod_pow(&gamma, &minus_p1_plus_q1_div_four, n);
+        let p1_plus_q1_div_four: BigInt = (&p.p_1 + &q.p_1).div_floor(&four);
+        let gamma_pow =  BigInt::mod_pow(&gamma, &p1_plus_q1_div_four, n);
+        let gamma_1 = BigInt::mod_inv(&gamma_pow, n).unwrap();
 
         let p1_plus_q1: BigInt = &p.p_1 + &q.p_1;
         let u2 = TN::pow(&h, &p1_plus_q1, n);
@@ -1044,7 +1049,8 @@ impl PartyTwoBiPrimalityTest {
             &ciphertext_pair_q_candidate.c0,
         )
         .unwrap();
-        let c_minus_p0_plus_q0 = ExponentElGamal::mul(&c_p0_plus_q0, &(-BigInt::one()));
+        //let c_minus_p0_plus_q0 = ExponentElGamal::mul(&c_p0_plus_q0, &(-BigInt::one()));
+        let c_minus_p0_plus_q0 = crate::utlities::mul_neg_one(&c_p0_plus_q0);
         let c_n_plus_one = ExponentElGamal::encrypt_from_predefined_randomness(
             &(n + BigInt::one()).modulus(&keys.joint_elgamal_pubkey.pp.q),
             &keys.joint_elgamal_pubkey,
@@ -1224,7 +1230,8 @@ impl PartyTwoCandidateGenerationSemiHonest {
             &BigInt::from(2),
         )
         .unwrap();
-        let enc_minus_alpha = ExponentElGamal::mul(&enc_alpha, &(-BigInt::one()));
+        //let enc_minus_alpha = ExponentElGamal::mul(&enc_alpha, &(-BigInt::one()));
+        let enc_minus_alpha = crate::utlities::mul_neg_one(&enc_alpha);
         let c_alpha_tilde = ExponentElGamal::add(&c_alpha, &enc_minus_alpha).unwrap();
 
         // we raise each ciphertext with a secret random number

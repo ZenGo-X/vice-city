@@ -50,7 +50,8 @@ pub struct ModStatement {
 
 impl ModProof {
     pub fn prove(witness: &ModWitness, statement: &ModStatement) -> Result<Self, ProofError> {
-        let minus_c_prime = ExponentElGamal::mul(&statement.c_prime, &-BigInt::one());
+        //let minus_c_prime = ExponentElGamal::mul(&statement.c_prime, &-BigInt::one());
+        let minus_c_prime = super::mul_neg_one(&statement.c_prime);
         let c_minus_c_prime = ExponentElGamal::add(&statement.c, &minus_c_prime).unwrap();
         let p_inv = BigInt::mod_inv(&statement.modulus_p, &statement.pk.pp.q);
         if p_inv.is_none() {
@@ -117,7 +118,7 @@ impl ModProof {
             };
         range_2 = range_2 * BigInt::from(3);
 
-        let minus_c_prime = ExponentElGamal::mul(&statement.c_prime, &-BigInt::one());
+        let minus_c_prime = super::mul_neg_one(&statement.c_prime);
         let c_minus_c_prime = ExponentElGamal::add(&statement.c, &minus_c_prime).unwrap();
         let p_inv = BigInt::mod_inv(&statement.modulus_p, &statement.pk.pp.q);
         if p_inv.is_none() {
@@ -181,6 +182,7 @@ mod tests {
             let c_prime =
                 ExponentElGamal::encrypt_from_predefined_randomness(&b, &keypair.pk, &r_b).unwrap();
             let witness = ModWitness { r_a, a, r_b, b };
+
             let statement = ModStatement {
                 c,
                 c_prime,
